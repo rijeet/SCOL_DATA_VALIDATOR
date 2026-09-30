@@ -844,24 +844,20 @@ export function RowEditorPage() {
           className="shrink-0 border-b border-amber-200 bg-amber-50 px-3 py-1.5"
           role="alert"
         >
-          <p className="text-sm font-bold text-amber-950">
-            Fix {fieldErrorList.length} field
-            {fieldErrorList.length === 1 ? '' : 's'} on this row:
-          </p>
-          <ul className="mt-1 max-h-24 list-inside list-disc overflow-y-auto text-sm font-bold text-amber-950/90">
-            {fieldErrorList.map(([key, msg]) => (
-              <li key={key}>
-                <span>{LABELS[key] ?? key}</span>
-                {' — '}
-                {msg}
-                {hintForField(key) ? (
-                  <span className="block pl-4 text-amber-800/90 not-italic">
-                    Hint: {hintForField(key)}
-                  </span>
+          <p className="text-sm font-bold leading-snug text-amber-950">
+            <span>
+              Fix {fieldErrorList.length} field
+              {fieldErrorList.length === 1 ? '' : 's'} on this row:{' '}
+            </span>
+            {fieldErrorList.map(([key, msg], index) => (
+              <span key={key}>
+                {index > 0 ? (
+                  <span className="text-amber-800/70"> · </span>
                 ) : null}
-              </li>
+                {LABELS[key] ?? key} — {msg}
+              </span>
             ))}
-          </ul>
+          </p>
         </div>
       )}
 
