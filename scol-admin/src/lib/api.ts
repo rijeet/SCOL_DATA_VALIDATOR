@@ -6,7 +6,18 @@ import {
   setReturnUrl,
 } from './authStorage';
 
-const API_BASE = import.meta.env.VITE_API_BASE_URL ?? '/api';
+/** Strip trailing slashes and accidental `/swagger` from Vercel env mistakes. */
+function resolveApiBase(): string {
+  const raw = import.meta.env.VITE_API_BASE_URL as string | undefined;
+  if (!raw?.trim()) return '/api';
+  let base = raw.trim().replace(/\/+$/, '');
+  if (base.toLowerCase().endsWith('/swagger')) {
+    base = base.slice(0, -'/swagger'.length).replace(/\/+$/, '');
+  }
+  return base;
+}
+
+const API_BASE = resolveApiBase();
 
 type ApiEnvelope<T> = {
   status: string;

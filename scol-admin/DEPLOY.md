@@ -17,8 +17,10 @@ If **Root Directory** is `.` (repo root), Vercel will install the **Nest API** (
 ## Environment variables
 
 ```env
-VITE_API_BASE_URL=https://your-api.vercel.app
+VITE_API_BASE_URL=https://scol-data-validator-backend.vercel.app
 ```
+
+Must **not** end with `/swagger` or `/api`. Login is `POST {VITE_API_BASE_URL}/auth/login`.
 
 Redeploy after changing any `VITE_*` variable.
 
