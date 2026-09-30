@@ -66,7 +66,10 @@ npm run seed:admin
 | Build Command | `npm run vercel-build` |
 | Output Directory | `dist` |
 
-Do not deploy the admin from the API project root; `/.vercelignore` excludes `scol-admin/` from the backend upload.
+Use a **second** Vercel project with **Root Directory = `scol-admin`**. If the build log shows `supertest` / `multer` warnings, you are building the **API** at repo root — fix Root Directory.
+
+**API project:** leave **Output Directory** empty (serverless `api/index.js`, not static `dist`).  
+**Admin project:** **Output Directory** = `dist`.
 
 ### Environment variables
 
