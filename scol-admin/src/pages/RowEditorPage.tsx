@@ -4,7 +4,11 @@ import { LoadingSplash } from '../components/LoadingSplash';
 import { UniversityHelpersPanel } from '../components/UniversityHelpersPanel';
 import { CourseUrlReferencePanel } from '../components/CourseUrlReferencePanel';
 import { apiFetch } from '../lib/api';
-import { resolveInitialRowIndex } from '../lib/initialWorkRow';
+import {
+  adjacentInvalidIndex,
+  fetchInvalidRowIndexes,
+  resolveInitialRowIndex,
+} from '../lib/batchInvalidRows';
 import { validateCourseRowScoreAndCompleteness } from '../lib/courseRowFieldValidation';
 import { hintForField } from '../lib/fieldErrorHints';
 import {
@@ -133,10 +137,7 @@ export function RowEditorPage() {
   const refreshInvalidRows = useCallback(async () => {
     if (!batchId) return;
     try {
-      const list = await apiFetch<number[]>(
-        `/data-entry/batches/${batchId}/invalid-rows`,
-      );
-      setInvalidRows(list);
+      setInvalidRows(await fetchInvalidRowIndexes(batchId));
     } catch {
       setInvalidRows([]);
     }
@@ -564,10 +565,10 @@ export function RowEditorPage() {
   const fixMode =
     (batch?.invalidRowCount ?? 0) > 0 && invalidRows.length > 0;
   const prev = fixMode
-    ? invalidRows.filter((i) => i < idx).at(-1) ?? null
+    ? adjacentInvalidIndex(invalidRows, idx, 'prev')
     : sequentialPrev;
   const next = fixMode
-    ? invalidRows.find((i) => i > idx) ?? null
+    ? adjacentInvalidIndex(invalidRows, idx, 'next')
     : sequentialNext;
   const showError = hasField('errorReason', draft, row);
   const metaCols = splitUrl ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-3';

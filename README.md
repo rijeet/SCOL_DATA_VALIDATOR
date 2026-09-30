@@ -95,7 +95,7 @@ Two projects: **API** (repo root) and **scol-admin** (`scol-admin/`). Step-by-st
 |---------|-----|
 | Empty university list | Run `npm run typeorm:run`; sync from Cloudinary or insert `sys_Universities` |
 | `503` / Cloudinary on import | API rate limit — wait for hourly reset; avoid rapid refresh |
-| `404` on `/first-invalid-row` | Restart `npm run start:dev` after pulling latest code |
+| Issue navigation empty | Ensure `GET /data-entry/batches/{id}/invalid-rows` returns sorted indexes |
 | Course URL “refused to connect” | Normal — use **Open in browser** (sites block iframes) |
 | Port in use | Stop other `node` on 3001 / 5173 |
 

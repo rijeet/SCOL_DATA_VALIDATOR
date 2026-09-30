@@ -30,12 +30,6 @@ export class DataEntryStagingService {
     private readonly publish: DataEntryPublishService,
   ) {}
 
-  async listBatches(): Promise<DataEntryBatches[]> {
-    return this.db.Set(DataEntryBatches).find({
-      order: { createdAt: 'DESC' },
-    });
-  }
-
   async listSysUniversitiesForDataEntry(): Promise<
     DataEntryUniversityListItemDto[]
   > {
@@ -131,19 +125,6 @@ export class DataEntryStagingService {
     });
   }
 
-  async getLatestBatchForSysUniversity(
-    sysUniversityId: string,
-  ): Promise<DataEntryBatches> {
-    const uni = await this.resolveSysUniversity(sysUniversityId);
-    const batch = await this.findLatestBatchForUniversityKey(uni.uniName);
-    if (!batch) {
-      throw new NotFoundException(
-        'No staging batch for this university. Import from Cloudinary first.',
-      );
-    }
-    return batch;
-  }
-
   async getBatch(batchId: string): Promise<DataEntryBatches> {
     const batch = await this.db.Set(DataEntryBatches).findOne({
       where: { id: batchId },
@@ -154,16 +135,6 @@ export class DataEntryStagingService {
     return batch;
   }
 
-  async getFirstInvalidRowIndex(batchId: string): Promise<number | null> {
-    await this.getBatch(batchId);
-    const row = await this.db.Set(DataEntryCourseRows).findOne({
-      where: { batchId, isValid: false },
-      order: { rowIndex: 'ASC' },
-      select: ['rowIndex'],
-    });
-    return row?.rowIndex ?? null;
-  }
-
   async listInvalidRowIndexes(batchId: string): Promise<number[]> {
     await this.getBatch(batchId);
     const rows = await this.db.Set(DataEntryCourseRows).find({
@@ -172,20 +143,6 @@ export class DataEntryStagingService {
       select: ['rowIndex'],
     });
     return rows.map((r) => r.rowIndex);
-  }
-
-  async getAdjacentInvalidRowIndex(
-    batchId: string,
-    currentRowIndex: number,
-    direction: 'next' | 'prev',
-  ): Promise<number | null> {
-    const indexes = await this.listInvalidRowIndexes(batchId);
-    if (indexes.length === 0) return null;
-    if (direction === 'next') {
-      return indexes.find((i) => i > currentRowIndex) ?? null;
-    }
-    const reversed = [...indexes].reverse();
-    return reversed.find((i) => i < currentRowIndex) ?? null;
   }
 
   async importFromCloudForSysUniversity(

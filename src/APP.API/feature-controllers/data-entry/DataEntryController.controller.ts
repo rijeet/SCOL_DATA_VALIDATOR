@@ -23,8 +23,6 @@ import { DataEntryPublishService } from '@bll/services/data-entry/staging/DataEn
 import { CreateDataEntryBatchRequestDto } from '@shared/dtos/data-entry/CreateDataEntryBatchRequestDto';
 import { UpdateDataEntryRowRequestDto } from '@shared/dtos/data-entry/UpdateDataEntryRowRequestDto';
 import type { DataEntryHelperKey } from '@shared/constants/dataEntryCloud.constants';
-import type { DataEntryUniversityPackDto } from '@bll/services/data-entry/staging/DataEntryCloudCatalogService';
-
 @ApiTags('data-entry')
 @Controller('data-entry')
 @UseGuards(JwtAuthGuard, RoleGuard)
@@ -45,14 +43,6 @@ export class DataEntryController {
     return this.staging.listSysUniversitiesForDataEntry();
   }
 
-  @Get('cloud/universities')
-  @ApiOperation({
-    summary: 'Optional: list university packs under SCOL_DATA in Cloudinary',
-  })
-  listCloudUniversities(): Promise<DataEntryUniversityPackDto[]> {
-    return this.catalog.listUniversityPacks();
-  }
-
   @Post('universities/sync-from-cloud')
   @ApiOperation({
     summary:
@@ -60,18 +50,6 @@ export class DataEntryController {
   })
   syncUniversitiesFromCloud() {
     return this.staging.syncSysUniversitiesFromCloud();
-  }
-
-  @Get('universities/:sysUniversityId/latest-batch')
-  @ApiOperation({ summary: 'Latest staging batch for a sys university' })
-  getLatestBatch(@Param('sysUniversityId') sysUniversityId: string) {
-    return this.staging.getLatestBatchForSysUniversity(sysUniversityId);
-  }
-
-  @Get('batches')
-  @ApiOperation({ summary: 'List imported batches' })
-  listBatches() {
-    return this.staging.listBatches();
   }
 
   @Post('batches')
@@ -113,39 +91,13 @@ export class DataEntryController {
     };
   }
 
-  @Get('batches/:batchId/invalid-rows/adjacent')
-  @ApiOperation({ summary: 'Next or previous invalid row from current index' })
-  async adjacentInvalidRow(
-    @Param('batchId') batchId: string,
-    @Query('current') current: string,
-    @Query('direction') direction: 'next' | 'prev',
-  ) {
-    const rowIndex = Number(current);
-    if (!Number.isFinite(rowIndex) || rowIndex < 1) {
-      throw new BadRequestException('current must be a positive row index');
-    }
-    if (direction !== 'next' && direction !== 'prev') {
-      throw new BadRequestException('direction must be next or prev');
-    }
-    const adjacent = await this.staging.getAdjacentInvalidRowIndex(
-      batchId,
-      rowIndex,
-      direction,
-    );
-    return { rowIndex: adjacent };
-  }
-
   @Get('batches/:batchId/invalid-rows')
-  @ApiOperation({ summary: 'All rowIndex values that are not valid' })
+  @ApiOperation({
+    summary:
+      'Sorted rowIndex values that are not valid (use [0] for first issue)',
+  })
   listInvalidRows(@Param('batchId') batchId: string) {
     return this.staging.listInvalidRowIndexes(batchId);
-  }
-
-  @Get('batches/:batchId/first-invalid-row')
-  @ApiOperation({ summary: 'Lowest rowIndex with validation errors, if any' })
-  async getFirstInvalidRow(@Param('batchId') batchId: string) {
-    const rowIndex = await this.staging.getFirstInvalidRowIndex(batchId);
-    return { rowIndex };
   }
 
   @Get('batches/:batchId/publish-readiness')
@@ -165,7 +117,14 @@ export class DataEntryController {
     return this.publish.publishBatchToCatalog(batchId);
   }
 
+  @Get('batches/:batchId')
+  @ApiOperation({ summary: 'Batch metadata (counts, status, university key)' })
+  getBatch(@Param('batchId') batchId: string) {
+    return this.staging.getBatch(batchId);
+  }
+
   @Get('batches/:batchId/rows/:rowIndex')
+  @ApiOperation({ summary: 'Single staging row with fieldErrors' })
   getRow(
     @Param('batchId') batchId: string,
     @Param('rowIndex', ParseIntPipe) rowIndex: number,
@@ -174,17 +133,13 @@ export class DataEntryController {
   }
 
   @Patch('batches/:batchId/rows/:rowIndex')
+  @ApiOperation({ summary: 'Update row fields and re-validate' })
   updateRow(
     @Param('batchId') batchId: string,
     @Param('rowIndex', ParseIntPipe) rowIndex: number,
     @Body() dto: UpdateDataEntryRowRequestDto,
   ) {
     return this.staging.updateRow(batchId, rowIndex, dto.fields);
-  }
-
-  @Get('batches/:batchId')
-  getBatch(@Param('batchId') batchId: string) {
-    return this.staging.getBatch(batchId);
   }
 
   @Get('universities/:universityKey/helpers/:helperKey')
