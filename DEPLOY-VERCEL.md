@@ -8,15 +8,19 @@ Use **two Vercel projects** from this repo.
 |---------|--------|
 | Root Directory | `.` (repository root) |
 | Framework | Other |
-| Build Command | `npm run vercel-build` (from `vercel.json`) |
+| Build Command | `npm run vercel-build` (from `vercel.json`; do **not** override with plain `npm run build` unless install includes dev deps) |
+| Install Command | `npm install --include=dev` (required so `@nestjs/cli` is available — Vercel sets `NODE_ENV=production` during build) |
 | Output | Serverless `api/index.js` + compiled `dist/` |
+
+In the Vercel dashboard, clear any custom **Build Command** that only runs `npm run build` without matching `vercel.json`, or set it explicitly to `npm run vercel-build`.
 
 ### Required environment variables
 
 Set in Vercel → Project → Settings → Environment Variables:
 
+`NODE_ENV` is `production` on Vercel at runtime automatically. Install uses `--include=dev` so Nest can compile (do not rely on omitting devDependencies).
+
 ```env
-NODE_ENV=production
 APP_STAGE=prod
 DATABASE_URL=postgresql://...?sslmode=require
 JWT_ACCESS_SECRET=<32+ chars>
