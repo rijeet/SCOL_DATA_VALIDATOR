@@ -25,6 +25,14 @@ npm run typeorm:run
 npm run seed:admin
 Set-Location scol-admin
 npm install
+# Optional: copy env.example.txt → .env.local for API URL + one-click login
+```
+
+For one-click sign-in on the login page, add `scol-admin/.env.local`:
+
+```env
+VITE_DEMO_ADMIN_EMAIL=admin@scol.com
+VITE_DEMO_ADMIN_PASSWORD=<same as ADMIN_PASSWORD in backend .env>
 ```
 
 Migrations include: auth minimal, **data-entry staging**, **sys_Universities**, and **catalog minimal** tables.
