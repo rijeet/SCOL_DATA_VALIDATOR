@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { FieldErrorTooltip } from '../components/FieldErrorTooltip';
 import { LoadingSplash } from '../components/LoadingSplash';
 import { UniversityHelpersPanel } from '../components/UniversityHelpersPanel';
 import { CourseUrlReferencePanel } from '../components/CourseUrlReferencePanel';
@@ -10,7 +11,6 @@ import {
   resolveInitialRowIndex,
 } from '../lib/batchInvalidRows';
 import { validateCourseRowScoreAndCompleteness } from '../lib/courseRowFieldValidation';
-import { hintForField } from '../lib/fieldErrorHints';
 import {
   getJsonParseError,
   prettifyJson,
@@ -377,22 +377,12 @@ export function RowEditorPage() {
     ].join(' ');
   }
 
-  function FieldErrorHint({ fieldKey }: { fieldKey: string }) {
-    const message = displayFieldErrors[fieldKey];
-    if (!message) return null;
-    const hint = hintForField(fieldKey);
-    return (
-      <div className="mt-0.5 space-y-0.5">
-        <p className="text-sm font-bold leading-tight text-red-600">
-          {message}
-        </p>
-        {hint && (
-          <p className="text-sm font-bold leading-tight text-amber-900/85">
-            {hint}
-          </p>
-        )}
-      </div>
-    );
+  function fieldTooltipProps(fieldKey: string, jsonError?: string | null) {
+    return {
+      fieldKey,
+      message: displayFieldErrors[fieldKey],
+      jsonError,
+    };
   }
 
   function MiniInput({
@@ -406,7 +396,7 @@ export function RowEditorPage() {
       return <span aria-hidden className="block h-7" />;
     }
     return (
-      <div className="min-w-0">
+      <FieldErrorTooltip {...fieldTooltipProps(fieldKey)} className="min-w-0">
         <input
           className={inputClass(
             fieldKey,
@@ -415,10 +405,9 @@ export function RowEditorPage() {
           value={draft[fieldKey] ?? ''}
           onChange={(e) => setField(fieldKey, e.target.value)}
           onBlur={() => void flushSave()}
-          title={LABELS[fieldKey] ?? fieldKey}
+          aria-invalid={Boolean(displayFieldErrors[fieldKey])}
         />
-        <FieldErrorHint fieldKey={fieldKey} />
-      </div>
+      </FieldErrorTooltip>
     );
   }
 
@@ -448,32 +437,35 @@ export function RowEditorPage() {
         <span className="whitespace-nowrap text-sm font-bold text-slate-700">
           {text}
         </span>
-        {multiline ? (
-          <textarea
-            className={inputClass(
-              fieldKey,
-              `resize-none ${inputClassName}`,
-              'full',
-            )}
-            rows={1}
-            value={value}
-            onChange={(e) => setField(fieldKey, e.target.value)}
-            onBlur={() => void flushSave()}
-          />
-        ) : (
-          <input
-            className={inputClass(fieldKey, inputClassName, widthMode)}
-            size={
-              widthMode === 'fit'
-                ? Math.min(72, Math.max(6, value.length + 2))
-                : undefined
-            }
-            value={value}
-            onChange={(e) => setField(fieldKey, e.target.value)}
-            onBlur={() => void flushSave()}
-          />
-        )}
-        <FieldErrorHint fieldKey={fieldKey} />
+        <FieldErrorTooltip {...fieldTooltipProps(fieldKey)} className="w-full">
+          {multiline ? (
+            <textarea
+              className={inputClass(
+                fieldKey,
+                `resize-none ${inputClassName}`,
+                'full',
+              )}
+              rows={1}
+              value={value}
+              onChange={(e) => setField(fieldKey, e.target.value)}
+              onBlur={() => void flushSave()}
+              aria-invalid={Boolean(displayFieldErrors[fieldKey])}
+            />
+          ) : (
+            <input
+              className={inputClass(fieldKey, inputClassName, widthMode)}
+              size={
+                widthMode === 'fit'
+                  ? Math.min(72, Math.max(6, value.length + 2))
+                  : undefined
+              }
+              value={value}
+              onChange={(e) => setField(fieldKey, e.target.value)}
+              onBlur={() => void flushSave()}
+              aria-invalid={Boolean(displayFieldErrors[fieldKey])}
+            />
+          )}
+        </FieldErrorTooltip>
       </label>
     );
   }
@@ -503,7 +495,6 @@ export function RowEditorPage() {
     const value = draft[key] ?? '';
     const jsonErr = getJsonParseError(value);
     const serverErr = displayFieldErrors[key];
-    const hint = hintForField(key);
     return (
       <section
         key={key}
@@ -514,8 +505,22 @@ export function RowEditorPage() {
         } ${tint}`}
       >
         <header className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 px-2 py-1">
-          <div className="min-w-0">
+          <div className="flex min-w-0 items-center gap-1.5">
             <h2 className="text-sm font-bold text-slate-800">{title}</h2>
+            {(serverErr || jsonErr) && (
+              <FieldErrorTooltip
+                fieldKey={key}
+                message={serverErr}
+                jsonError={jsonErr}
+              >
+                <span
+                  className="cursor-help rounded bg-red-100 px-1 py-0.5 text-xs font-bold text-red-700"
+                  tabIndex={0}
+                >
+                  !
+                </span>
+              </FieldErrorTooltip>
+            )}
           </div>
           <button
             type="button"
@@ -525,35 +530,26 @@ export function RowEditorPage() {
             Format JSON
           </button>
         </header>
-        <textarea
-          className={inputClass(
-            key,
-            `min-h-0 flex-1 resize-none border-0 px-2 py-2 font-mono text-sm font-bold leading-relaxed whitespace-pre shadow-none focus:ring-1 focus:ring-slate-300 ${
-              jsonErr && value.trim() ? 'bg-red-50/50' : 'bg-slate-50/40'
-            }`,
-          )}
-          value={value}
-          onChange={(e) => setField(key, e.target.value)}
-          onBlur={() => handleMetaBlur(key)}
-          spellCheck={false}
-        />
-        {(serverErr || jsonErr || hint) && (serverErr || jsonErr) && (
-          <div className="shrink-0 space-y-0.5 border-t border-red-100 bg-red-50/80 px-2 py-1.5">
-            {serverErr && (
-              <p className="text-sm font-bold text-red-700">{serverErr}</p>
+        <FieldErrorTooltip
+          fieldKey={key}
+          message={serverErr}
+          jsonError={jsonErr}
+          className="flex min-h-0 flex-1 flex-col"
+        >
+          <textarea
+            className={inputClass(
+              key,
+              `min-h-0 flex-1 resize-none border-0 px-2 py-2 font-mono text-sm font-bold leading-relaxed whitespace-pre shadow-none focus:ring-1 focus:ring-slate-300 ${
+                jsonErr && value.trim() ? 'bg-red-50/50' : 'bg-slate-50/40'
+              }`,
             )}
-            {jsonErr && (
-              <p className="text-sm font-bold text-red-600">
-                JSON: {jsonErr}
-              </p>
-            )}
-            {hint && (
-              <p className="text-sm font-bold leading-snug text-amber-900/90">
-                Hint: {hint}
-              </p>
-            )}
-          </div>
-        )}
+            value={value}
+            onChange={(e) => setField(key, e.target.value)}
+            onBlur={() => handleMetaBlur(key)}
+            spellCheck={false}
+            aria-invalid={Boolean(serverErr || jsonErr)}
+          />
+        </FieldErrorTooltip>
       </section>
     );
   }
@@ -841,22 +837,13 @@ export function RowEditorPage() {
 
       {fieldErrorList.length > 0 && (
         <div
-          className="shrink-0 border-b border-amber-200 bg-amber-50 px-3 py-1.5"
-          role="alert"
+          className="shrink-0 border-b border-amber-200 bg-amber-50 px-3 py-1"
+          role="status"
         >
-          <p className="text-sm font-bold leading-snug text-amber-950">
-            <span>
-              Fix {fieldErrorList.length} field
-              {fieldErrorList.length === 1 ? '' : 's'} on this row:{' '}
-            </span>
-            {fieldErrorList.map(([key, msg], index) => (
-              <span key={key}>
-                {index > 0 ? (
-                  <span className="text-amber-800/70"> · </span>
-                ) : null}
-                {LABELS[key] ?? key} — {msg}
-              </span>
-            ))}
+          <p className="text-xs font-bold text-amber-950">
+            {fieldErrorList.length} issue
+            {fieldErrorList.length === 1 ? '' : 's'} — hover red fields for
+            details
           </p>
         </div>
       )}
