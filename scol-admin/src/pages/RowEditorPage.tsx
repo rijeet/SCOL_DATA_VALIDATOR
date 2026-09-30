@@ -127,6 +127,7 @@ export function RowEditorPage() {
   const [helpersOpen, setHelpersOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [jumpRowInput, setJumpRowInput] = useState('');
+  const [activeMetaTab, setActiveMetaTab] = useState('');
   const draftRef = useRef(draft);
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
@@ -567,7 +568,51 @@ export function RowEditorPage() {
     ? adjacentInvalidIndex(invalidRows, idx, 'next')
     : sequentialNext;
   const showError = hasField('errorReason', draft, row);
-  const metaCols = splitUrl ? 'grid-cols-1' : 'grid-cols-1 lg:grid-cols-3';
+
+  const metaTabs = useMemo(() => {
+    const tabs: { key: string; label: string; tint: string; title: string }[] =
+      [];
+    if (hasField('AcademicRequirementsMetaData', draft, row)) {
+      tabs.push({
+        key: 'AcademicRequirementsMetaData',
+        label: 'Academic',
+        title: 'Academic requirements',
+        tint: 'ring-1 ring-violet-100',
+      });
+    }
+    if (hasField('feesMetaData', draft, row)) {
+      tabs.push({
+        key: 'feesMetaData',
+        label: 'Fees',
+        title: 'Fees detail',
+        tint: 'ring-1 ring-emerald-100',
+      });
+    }
+    if (hasField('scholarshipMetaData', draft, row)) {
+      tabs.push({
+        key: 'scholarshipMetaData',
+        label: 'Scholarship',
+        title: 'Scholarship detail',
+        tint: 'ring-1 ring-amber-100',
+      });
+    }
+    if (showError) {
+      tabs.push({
+        key: 'errorReason',
+        label: 'Review',
+        title: 'Review',
+        tint: '',
+      });
+    }
+    return tabs;
+  }, [draft, row, showError]);
+
+  useEffect(() => {
+    if (!metaTabs.length) return;
+    if (!metaTabs.some((t) => t.key === activeMetaTab)) {
+      setActiveMetaTab(metaTabs[0].key);
+    }
+  }, [metaTabs, activeMetaTab, idx]);
 
   const englishVisible = ENGLISH_TESTS.some(
     (t) =>
@@ -581,51 +626,89 @@ export function RowEditorPage() {
   const catalogPublished =
     publishReadiness?.status === 'PUBLISHED' || batch?.status === 'PUBLISHED';
 
-  function renderIdentityLayout() {
-    const showCourseUrlField = hasField('courseUrlExternal', draft, row);
+  function identityLineInput(fieldKey: string, textClass: string) {
+    if (!hasField(fieldKey, draft, row)) return null;
+    const value = draft[fieldKey] ?? '';
+    return (
+      <FieldErrorTooltip
+        {...fieldTooltipProps(fieldKey)}
+        className="block min-w-0"
+      >
+        <input
+          className={inputClass(
+            fieldKey,
+            `w-full min-w-0 border-0 bg-transparent px-0 py-0 shadow-none focus:rounded focus:ring-1 focus:ring-slate-300 ${textClass}`,
+          )}
+          value={value}
+          onChange={(e) => setField(fieldKey, e.target.value)}
+          onBlur={() => void flushSave()}
+          aria-label={LABELS[fieldKey] ?? fieldKey}
+          aria-invalid={Boolean(displayFieldErrors[fieldKey])}
+        />
+      </FieldErrorTooltip>
+    );
+  }
 
-    if (splitUrl) {
-      return (
-        <div className="flex flex-col gap-2">
-          <Cell fieldKey="uniName" fitWidth boxClassName="w-full max-w-full" />
-          <Cell fieldKey="programmeName" fitWidth boxClassName="w-full max-w-full" />
-          <Cell fieldKey="courseName" fitWidth boxClassName="w-full max-w-full" />
-          <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
-            <Cell fieldKey="degreeName" fitWidth inputClassName="tabular-nums" />
-            <Cell fieldKey="intakeInfo" fitWidth boxClassName="max-w-full" />
-            <Cell
-              fieldKey="courseDuration"
-              fitWidth
-              inputClassName="tabular-nums"
-            />
-          </div>
-        </div>
-      );
-    }
+  function identityMiniField(fieldKey: string, boxClass = '') {
+    if (!hasField(fieldKey, draft, row)) return null;
+    const label = LABELS[fieldKey] ?? fieldKey;
+    const value = draft[fieldKey] ?? '';
+    return (
+      <div className={`flex min-w-0 flex-col gap-0 ${boxClass}`}>
+        <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+          {label}
+        </span>
+        <FieldErrorTooltip {...fieldTooltipProps(fieldKey)} className="min-w-0">
+          <input
+            className={inputClass(
+              fieldKey,
+              'h-7 w-full min-w-[3rem] px-1 text-sm font-bold tabular-nums',
+            )}
+            value={value}
+            onChange={(e) => setField(fieldKey, e.target.value)}
+            onBlur={() => void flushSave()}
+            aria-invalid={Boolean(displayFieldErrors[fieldKey])}
+          />
+        </FieldErrorTooltip>
+      </div>
+    );
+  }
+
+  function renderIdentitySummary() {
+    const showCourseUrlField =
+      !splitUrl && hasField('courseUrlExternal', draft, row);
+    const hasIdentity =
+      hasField('uniName', draft, row) ||
+      hasField('programmeName', draft, row) ||
+      hasField('courseName', draft, row);
+
+    if (!hasIdentity) return null;
 
     return (
       <div className="flex flex-col gap-2">
-        <div className="flex flex-wrap items-end gap-x-4 gap-y-2">
-          <Cell fieldKey="uniName" fitWidth boxClassName="max-w-full" />
-          <Cell fieldKey="programmeName" fitWidth boxClassName="max-w-full" />
-          <Cell fieldKey="courseName" fitWidth boxClassName="max-w-full" />
-        </div>
-        <div className="flex flex-wrap items-end gap-x-3 gap-y-2">
-          <Cell
-            fieldKey="degreeName"
-            fitWidth
-            inputClassName="tabular-nums"
-          />
-          <Cell
-            fieldKey="intakeInfo"
-            fitWidth
-            boxClassName="min-w-[10rem] max-w-[36ch]"
-          />
-          <Cell
-            fieldKey="courseDuration"
-            fitWidth
-            inputClassName="tabular-nums"
-          />
+        <div
+          className="min-w-0 rounded-md border border-slate-200 bg-slate-50/90 p-2 shadow-sm"
+          aria-label="Course identity"
+        >
+          {identityLineInput(
+            'uniName',
+            'text-sm font-bold leading-snug text-slate-900',
+          )}
+          {identityLineInput(
+            'programmeName',
+            'text-sm font-semibold leading-snug text-slate-700',
+          )}
+          {identityLineInput(
+            'courseName',
+            'text-sm font-bold leading-snug text-slate-800',
+          )}
+          <div
+            className="mt-1.5 grid grid-cols-[minmax(3.5rem,1fr)_minmax(0,1.6fr)_minmax(3.5rem,0.9fr)] gap-x-2 gap-y-1 border-t border-slate-200/80 pt-1.5"
+          >
+            {identityMiniField('degreeName')}
+            {identityMiniField('intakeInfo')}
+            {identityMiniField('courseDuration')}
+          </div>
         </div>
         {showCourseUrlField && (
           <Cell
@@ -866,7 +949,7 @@ export function RowEditorPage() {
                 <div
                   className="grid grid-cols-[minmax(0,1fr)_minmax(10rem,38%)] items-start gap-2"
                 >
-                  <div className="min-w-0">{renderIdentityLayout()}</div>
+                  <div className="min-w-0">{renderIdentitySummary()}</div>
                   <div
                     className="flex min-w-0 flex-col gap-1 rounded border border-amber-200/80 bg-amber-50/35 p-1.5"
                   >
@@ -975,7 +1058,7 @@ export function RowEditorPage() {
               </div>
             ) : (
               <>
-                {renderIdentityLayout()}
+                {renderIdentitySummary()}
 
                 <div className="flex w-full flex-wrap items-start gap-2">
                   <div
@@ -1102,39 +1185,64 @@ export function RowEditorPage() {
             </div>
           </section>
 
-          <div className={`grid min-h-0 flex-1 gap-1.5 ${metaCols}`}>
-            {renderMetaPanel(
-              'AcademicRequirementsMetaData',
-              'Academic requirements',
-              'ring-1 ring-violet-100',
-            )}
-            {renderMetaPanel('feesMetaData', 'Fees detail', 'ring-1 ring-emerald-100')}
-            <div className="flex min-h-0 flex-1 flex-col gap-1.5">
-              {renderMetaPanel(
-                'scholarshipMetaData',
-                'Scholarship detail',
-                'ring-1 ring-amber-100',
-              )}
-              {showError && (
-                <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border border-slate-200 bg-white">
-                  <header className="shrink-0 border-b border-slate-100 px-2 py-1">
-                    <h2 className="text-sm font-bold text-slate-800">
-                      Review
-                    </h2>
-                  </header>
-                  <textarea
-                    className={inputClass(
-                      'errorReason',
-                      'min-h-0 flex-1 resize-none border-0 px-2 py-1 text-sm font-bold',
-                    )}
-                    value={draft.errorReason ?? ''}
-                    onChange={(e) => setField('errorReason', e.target.value)}
-                    onBlur={() => void flushSave()}
-                  />
-                </section>
-              )}
+          {metaTabs.length > 0 && (
+            <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+              <div
+                className="flex shrink-0 flex-wrap gap-0.5 border-b border-slate-200 bg-slate-50/80 p-1"
+                role="tablist"
+                aria-label="Metadata"
+              >
+                {metaTabs.map((tab) => {
+                  const jsonErr =
+                    tab.key !== 'errorReason'
+                      ? getJsonParseError(draft[tab.key] ?? '')
+                      : null;
+                  const serverErr = displayFieldErrors[tab.key];
+                  const hasIssue = Boolean(serverErr || jsonErr);
+                  const selected = activeMetaTab === tab.key;
+                  return (
+                    <button
+                      key={tab.key}
+                      type="button"
+                      role="tab"
+                      aria-selected={selected}
+                      className={`rounded px-2 py-1 text-xs font-bold ${
+                        selected
+                          ? 'bg-white text-slate-900 shadow ring-1 ring-slate-200'
+                          : 'text-slate-600 hover:bg-white/70'
+                      } ${hasIssue ? 'text-red-700' : ''}`}
+                      onClick={() => setActiveMetaTab(tab.key)}
+                    >
+                      {tab.label}
+                      {hasIssue ? ' !' : ''}
+                    </button>
+                  );
+                })}
+              </div>
+              <div className="flex min-h-0 flex-1 flex-col p-1" role="tabpanel">
+                {activeMetaTab === 'errorReason' && showError && (
+                  <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-slate-100">
+                    <textarea
+                      className={inputClass(
+                        'errorReason',
+                        'min-h-0 flex-1 resize-none border-0 px-2 py-2 text-sm font-bold',
+                      )}
+                      value={draft.errorReason ?? ''}
+                      onChange={(e) => setField('errorReason', e.target.value)}
+                      onBlur={() => void flushSave()}
+                    />
+                  </section>
+                )}
+                {metaTabs
+                  .filter((t) => t.key !== 'errorReason')
+                  .map((tab) =>
+                    activeMetaTab === tab.key
+                      ? renderMetaPanel(tab.key, tab.title, tab.tint)
+                      : null,
+                  )}
+              </div>
             </div>
-          </div>
+          )}
           </fieldset>
         </form>
 
