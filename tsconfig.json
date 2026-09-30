@@ -1,0 +1,25 @@
+{
+  "compilerOptions": {
+    "target": "ES2021",
+    "module": "commonjs",
+    "moduleResolution": "node",
+    "esModuleInterop": true, // ✅ fixes "default-imported using esModuleInterop" for pino
+    "allowSyntheticDefaultImports": true,
+    "skipLibCheck": true, // ✅ avoids type noise from node_modules
+    "experimentalDecorators": true,
+    "emitDecoratorMetadata": true,
+    "baseUrl": ".",
+    "paths": {
+      "@api/*": ["src/APP.API/*"],
+      "@bll/*": ["src/APP.BLL/*"],
+      "@job/*": ["src/APP.JOB/*"],
+      "@infra/*": ["src/APP.Infrastructure/*"],
+      "@entity/*": ["src/APP.Entity/*"],
+      "@shared/*": ["src/APP.Shared/*"]
+    },
+    "strict": true,
+    "sourceMap": true,
+    "inlineSources": true,
+    "typeRoots": ["./node_modules/@types", "./src/APP.Shared/types"]
+  }
+}

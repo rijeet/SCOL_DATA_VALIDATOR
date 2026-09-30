@@ -1,0 +1,34 @@
+# Docker Compose for SCOL Backend - Local Development
+#
+# Usage:
+#   docker-compose up -d        # Start Redis
+#   docker-compose down         # Stop Redis
+#   docker-compose logs -f      # View logs
+
+services:
+  # ============================================================================
+  # Redis Cache & Rate Limiting
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: scol-redis
+    ports:
+      - '6379:6379'
+    command: >
+      redis-server
+      --requirepass redis123
+      --appendonly yes
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+    volumes:
+      - redis_data:/data
+    healthcheck:
+      test: ['CMD', 'redis-cli', '-a', 'redis123', 'ping']
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    restart: unless-stopped
+
+volumes:
+  redis_data:
+    driver: local

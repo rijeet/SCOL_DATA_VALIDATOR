@@ -1,0 +1,200 @@
+import { Global, Module } from '@nestjs/common';
+import { TypeOrmModule as NestTypeOrmModule } from '@nestjs/typeorm';
+import { ConfigService } from '@nestjs/config';
+import { DataSourceOptions } from 'typeorm';
+import type { IInfrastructureConfig } from '@shared/interfaces/config/IInfrastructureConfig.interface';
+import { IInfrastructureConfig as IInfrastructureConfigToken } from '@shared/tokens/injection.tokens';
+import { getAppStage } from '@infra/config/getAppStage';
+
+// Import QueryBuilder extension methods to register them globally
+import '../extensions/QueryBuilderExtensions';
+
+// Import entities
+import { SysCountries } from '@entity/entities/SysCountries.entity';
+import { SysAcademicDegrees } from '@entity/entities/SysAcademicDegrees.entity';
+import { SysEnglishTests } from '@entity/entities/SysEnglishTests.entity';
+import { SysProgrammes } from '@entity/entities/SysProgrammes.entity';
+import { SysPermissions } from '@entity/entities/SysPermissions.entity';
+import { SysRoles } from '@entity/entities/SysRoles.entity';
+import { SysLeadProfiles } from '@entity/entities/SysLeadProfiles.entity';
+import { SysUsers } from '@entity/entities/SysUsers.entity';
+import { LeadAcademicResults } from '@entity/entities/LeadAcademicResults.entity';
+import { LeadTestResults } from '@entity/entities/LeadTestResults.entity';
+import { LeadPreferredCountries } from '@entity/entities/LeadPreferredCountries.entity';
+import { LeadPreferredPrograms } from '@entity/entities/LeadPreferredPrograms.entity';
+import { UserSessions } from '@entity/entities/UserSessions.entity';
+import { UserPermissions } from '@entity/entities/UserPermissions.entity';
+import { UserRoles } from '@entity/entities/UserRoles.entity';
+import { OtpSession } from '@entity/entities/OtpSession.entity';
+// New entities
+import { SysStates } from '@entity/entities/SysStates.entity';
+import { SysCities } from '@entity/entities/SysCities.entity';
+import { SysEnglishTestSections } from '@entity/entities/SysEnglishTestSections.entity';
+import { LeadEnglishTestResults } from '@entity/entities/LeadEnglishTestResults.entity';
+import { LeadEnglishTestSectionResults } from '@entity/entities/LeadEnglishTestSectionResults.entity';
+import { SysUniversities } from '@entity/entities/SysUniversities.entity';
+import { UniCourses } from '@entity/entities/UniCourses.entity';
+import { UniCourseIntakes } from '@entity/entities/UniCourseIntakes.entity';
+import { CourseIntakeScholarships } from '@entity/entities/CourseIntakeScholarships.entity';
+import { UniAcademicReq } from '@entity/entities/UniAcademicReq.entity';
+import { UniEngReq } from '@entity/entities/UniEngReq.entity';
+import { CourseEngReq } from '@entity/entities/CourseEngReq.entity';
+import { SysDocumentTypes } from '@entity/entities/SysDocumentTypes.entity';
+import { SysApplicationStage } from '@entity/entities/SysApplicationStage.entity';
+import { SysApplicationStatus } from '@entity/entities/SysApplicationStatus.entity';
+import { SysApplicationStage2Status } from '@entity/entities/SysApplicationStage2Status.entity';
+import { Applications } from '@entity/entities/Applications.entity';
+import { CourseRequiredDocuments } from '@entity/entities/CourseRequiredDocuments.entity';
+import { ApplicationRequiredDocuments } from '@entity/entities/ApplicationRequiredDocuments.entity';
+import { ApplicationDocuments } from '@entity/entities/ApplicationDocuments.entity';
+import { ApplicationDocumentVersions } from '@entity/entities/ApplicationDocumentVersions.entity';
+import { SysStageRequiredDocuments } from '@entity/entities/SysStageRequiredDocuments.entity';
+import { ApplicationActivities } from '@entity/entities/ApplicationActivities.entity';
+import { ApplicationNotes } from '@entity/entities/ApplicationNotes.entity';
+import { LeadDocuments } from '@entity/entities/LeadDocuments.entity';
+import { LeadDocumentVersions } from '@entity/entities/LeadDocumentVersions.entity';
+import { LeadFavouriteCourses } from '@entity/entities/LeadFavouriteCourses.entity';
+import { LeadCrmInfos } from '@entity/entities/LeadCrmInfos.entity';
+import { SysConsultantProfiles } from '@entity/entities/SysConsultantProfiles.entity';
+import { ConsultantCertifications } from '@entity/entities/ConsultantCertifications.entity';
+import { UniApplicationStage } from '@entity/entities/UniApplicationStage.entity';
+import { DataEntryBatches } from '@entity/entities/DataEntryBatches.entity';
+import { DataEntryCourseRows } from '@entity/entities/DataEntryCourseRows.entity';
+import { AppDbContext } from './AppDbContext';
+
+@Global()
+@Module({
+  imports: [
+    NestTypeOrmModule.forRootAsync({
+      inject: [IInfrastructureConfigToken, ConfigService],
+      useFactory: (
+        config: IInfrastructureConfig,
+        cfg: ConfigService,
+      ): DataSourceOptions => {
+        const url = config.database.url;
+        const base: DataSourceOptions = { type: 'postgres', url };
+
+        return {
+          ...base,
+          entities: [
+            SysCountries,
+            SysAcademicDegrees,
+            SysEnglishTests,
+            SysProgrammes,
+            SysPermissions,
+            SysRoles,
+            SysLeadProfiles,
+            SysUsers,
+            LeadAcademicResults,
+            LeadTestResults,
+            LeadPreferredCountries,
+            LeadPreferredPrograms,
+            UserSessions,
+            UserPermissions,
+            UserRoles,
+            OtpSession,
+            // New entities
+            SysStates,
+            SysCities,
+            SysEnglishTestSections,
+            LeadEnglishTestResults,
+            LeadEnglishTestSectionResults,
+            SysUniversities,
+            UniCourses,
+            UniCourseIntakes,
+            CourseIntakeScholarships,
+            UniAcademicReq,
+            UniEngReq,
+            CourseEngReq,
+            SysDocumentTypes,
+            SysApplicationStage,
+            SysApplicationStatus,
+            SysApplicationStage2Status,
+            Applications,
+            CourseRequiredDocuments,
+            ApplicationRequiredDocuments,
+            ApplicationDocuments,
+            ApplicationDocumentVersions,
+            SysStageRequiredDocuments,
+            ApplicationActivities,
+            ApplicationNotes,
+            LeadDocuments,
+            LeadDocumentVersions,
+            LeadFavouriteCourses,
+            LeadCrmInfos,
+            SysConsultantProfiles,
+            ConsultantCertifications,
+            UniApplicationStage,
+            DataEntryBatches,
+            DataEntryCourseRows,
+          ],
+          synchronize: false,
+          logging: getAppStage() === 'dev' ? ['error', 'warn'] : ['error'],
+          // Serverless-optimized connection pool settings
+          // Keeps connections minimal to avoid exhausting Neon/serverless DB limits
+          extra: {
+            max: 2, // Maximum connections per serverless instance
+            idleTimeoutMillis: 10000, // Close idle connections after 10s
+            connectionTimeoutMillis: 10000, // Timeout for new connections
+          },
+        };
+      },
+    }),
+
+    NestTypeOrmModule.forFeature([
+      SysCountries,
+      SysAcademicDegrees,
+      SysEnglishTests,
+      SysProgrammes,
+      SysPermissions,
+      SysRoles,
+      SysLeadProfiles,
+      SysUsers,
+      LeadAcademicResults,
+      LeadTestResults,
+      LeadPreferredCountries,
+      LeadPreferredPrograms,
+      UserSessions,
+      UserPermissions,
+      UserRoles,
+      OtpSession,
+      // New entities
+      SysStates,
+      SysCities,
+      SysEnglishTestSections,
+      LeadEnglishTestResults,
+      LeadEnglishTestSectionResults,
+      SysUniversities,
+      UniCourses,
+      UniCourseIntakes,
+      CourseIntakeScholarships,
+      UniAcademicReq,
+      UniEngReq,
+      CourseEngReq,
+      SysDocumentTypes,
+      SysApplicationStage,
+      SysApplicationStatus,
+      SysApplicationStage2Status,
+      Applications,
+      CourseRequiredDocuments,
+      ApplicationRequiredDocuments,
+      ApplicationDocuments,
+      ApplicationDocumentVersions,
+      SysStageRequiredDocuments,
+      ApplicationActivities,
+      ApplicationNotes,
+      LeadDocuments,
+      LeadDocumentVersions,
+      LeadFavouriteCourses,
+      LeadCrmInfos,
+      SysConsultantProfiles,
+      ConsultantCertifications,
+      UniApplicationStage,
+      DataEntryBatches,
+      DataEntryCourseRows,
+    ]),
+  ],
+  providers: [AppDbContext],
+  exports: [AppDbContext],
+})
+export class TypeOrmModule {}

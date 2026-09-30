@@ -1,0 +1,20 @@
+@import 'tailwindcss';
+
+html,
+body,
+#root {
+  height: 100%;
+}
+
+body {
+  @apply bg-slate-50 text-slate-900 antialiased;
+}
+
+@layer components {
+  .field-fit {
+    field-sizing: content;
+    width: auto;
+    max-width: min(100%, 72ch);
+    min-width: 6ch;
+  }
+}

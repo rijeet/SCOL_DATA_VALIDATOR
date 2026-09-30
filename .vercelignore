@@ -1,0 +1,9 @@
+reference/
+scol-admin/
+test/
+coverage/
+.cursor/
+BulkImport/
+docs/
+*.zip
+dev_courses_*.csv
