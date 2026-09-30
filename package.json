@@ -6,13 +6,13 @@
   "private": true,
   "license": "UNLICENSED",
   "engines": {
-    "node": ">=20"
+    "node": "20.x"
   },
   "scripts": {
     "start": "node -r newrelic dist/main.js",
     "start:dev": "cross-env NODE_OPTIONS=\"--require ./load-env.js --require newrelic\" nest start --watch",
     "start:debug": "nest start --debug --watch",
-    "build": "npx nest build && npx tsc-alias -p tsconfig.build.json",
+    "build": "nest build && tsc-alias -p tsconfig.build.json",
     "vercel-build": "npm run build",
     "start:prod": "npm run build && node dist/main.js",
     "test": "jest",
@@ -59,13 +59,15 @@
     "reflect-metadata": "0.1.14",
     "rxjs": "7.8.1",
     "swagger-ui-express": "5.0.1",
-    "typeorm": "0.3.27"
+    "typeorm": "0.3.27",
+    "@nestjs/cli": "11.0.24",
+    "@nestjs/schematics": "11.0.0",
+    "tsc-alias": "^1.8.10",
+    "typescript": "5.7.3"
   },
   "devDependencies": {
     "@eslint/eslintrc": "3.2.0",
     "@eslint/js": "9.18.0",
-    "@nestjs/cli": "11.0.24",
-    "@nestjs/schematics": "11.0.0",
     "@nestjs/testing": "11.1.8",
     "@types/bcrypt": "^6.0.0",
     "@types/express": "5.0.0",
@@ -90,9 +92,7 @@
     "ts-jest": "29.4.5",
     "ts-loader": "9.5.2",
     "ts-node": "10.9.2",
-    "tsc-alias": "^1.8.10",
     "tsconfig-paths": "4.2.0",
-    "typescript": "5.7.3",
     "typescript-eslint": "8.20.0"
   },
   "jest": {

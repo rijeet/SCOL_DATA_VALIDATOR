@@ -60,10 +60,13 @@ npm run seed:admin
 
 | Setting | Value |
 |---------|--------|
-| Root Directory | `scol-admin` |
-| Framework | Vite (auto-detected) |
-| Build Command | `npm run build` |
+| Root Directory | **`scol-admin`** (required — separate Vercel project from API) |
+| Framework | Vite |
+| Install Command | `npm ci --include=dev \|\| npm install --include=dev` (from `scol-admin/vercel.json`) |
+| Build Command | `npm run vercel-build` |
 | Output Directory | `dist` |
+
+Do not deploy the admin from the API project root; `/.vercelignore` excludes `scol-admin/` from the backend upload.
 
 ### Environment variables
 
