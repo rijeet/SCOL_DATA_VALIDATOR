@@ -861,96 +861,212 @@ export function RowEditorPage() {
             className="flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 border-0 p-0 disabled:opacity-90"
           >
           <section className="shrink-0 space-y-1.5 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
-            {renderIdentityLayout()}
-
-            <div className="flex w-full flex-wrap items-start gap-2">
-              <div
-                className="rounded border border-violet-200/80 bg-violet-50/40 p-1.5"
-              >
-                <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-violet-800/80">
-                  Academic
-                </p>
+            {splitUrl ? (
+              <div className="flex flex-col gap-2">
                 <div
-                  className="grid grid-cols-[2rem_minmax(4.5rem,1fr)_minmax(3.5rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
+                  className="grid grid-cols-[minmax(0,1fr)_minmax(10rem,38%)] items-start gap-2"
                 >
-                  <span />
-                  <span className="text-sm font-bold text-slate-600">Deg</span>
-                  <span className="text-sm font-bold text-slate-600">GPA</span>
-                  <span className="text-sm font-bold text-slate-600">Min</span>
-                  <MiniInput fieldKey="minDegreeName" />
-                  <MiniInput fieldKey="minGpa" />
-                  <span className="text-sm font-bold text-slate-600">Hi</span>
-                  <MiniInput fieldKey="higherDegreeName" />
-                  <MiniInput fieldKey="higherGpa" />
-                </div>
-              </div>
-
-              {englishVisible && (
-                <div
-                  className="rounded border border-sky-200/80 bg-sky-50/40 p-1.5"
-                >
-                  <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-sky-800/80">
-                    English
-                  </p>
+                  <div className="min-w-0">{renderIdentityLayout()}</div>
                   <div
-                    className="grid grid-cols-[2rem_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
+                    className="flex min-w-0 flex-col gap-1 rounded border border-amber-200/80 bg-amber-50/35 p-1.5"
                   >
-                    <span />
-                    {ENGLISH_TESTS.map((test) => {
-                      const show =
-                        hasField(test.overall, draft, row) ||
-                        hasField(test.section, draft, row);
-                      if (!show) return null;
-                      return (
-                        <span
-                          key={`${test.name}-h`}
-                          className="text-center text-sm font-bold text-sky-900/80"
-                        >
-                          {test.name}
-                        </span>
-                      );
-                    })}
-                    <span className="text-sm font-bold text-slate-600">Over</span>
-                    {ENGLISH_TESTS.map((test) => {
-                      const show =
-                        hasField(test.overall, draft, row) ||
-                        hasField(test.section, draft, row);
-                      if (!show) return null;
-                      return (
-                        <MiniInput key={`${test.name}-o`} fieldKey={test.overall} />
-                      );
-                    })}
-                    <span className="text-sm font-bold text-slate-600">Min</span>
-                    {ENGLISH_TESTS.map((test) => {
-                      const show =
-                        hasField(test.overall, draft, row) ||
-                        hasField(test.section, draft, row);
-                      if (!show) return null;
-                      return (
-                        <MiniInput key={`${test.name}-m`} fieldKey={test.section} />
-                      );
-                    })}
+                    <p className="text-sm font-bold uppercase tracking-wide text-amber-900/70">
+                      Scholarship
+                    </p>
+                    <Cell
+                      fieldKey="scholarshipName"
+                      fitWidth
+                      boxClassName="max-w-full"
+                    />
+                    <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+                      <Cell
+                        fieldKey="scholarshipAmount"
+                        fitWidth
+                        inputClassName="tabular-nums"
+                      />
+                      <Cell fieldKey="scholarshipType" fitWidth />
+                    </div>
                   </div>
                 </div>
-              )}
 
-              <div
-                className="flex max-w-full flex-col gap-1 rounded border border-amber-200/80 bg-amber-50/35 p-1.5"
-              >
-                <p className="text-sm font-bold uppercase tracking-wide text-amber-900/70">
-                  Scholarship
-                </p>
-                <Cell fieldKey="scholarshipName" fitWidth boxClassName="max-w-full" />
-                <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
-                  <Cell
-                    fieldKey="scholarshipAmount"
-                    fitWidth
-                    inputClassName="tabular-nums"
-                  />
-                  <Cell fieldKey="scholarshipType" fitWidth />
+                <div
+                  className={`grid items-start gap-2 ${
+                    englishVisible
+                      ? 'grid-cols-2'
+                      : 'grid-cols-1'
+                  }`}
+                >
+                  <div
+                    className="min-w-0 rounded border border-violet-200/80 bg-violet-50/40 p-1.5"
+                  >
+                    <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-violet-800/80">
+                      Academic
+                    </p>
+                    <div
+                      className="grid grid-cols-[2rem_minmax(4.5rem,1fr)_minmax(3.5rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
+                    >
+                      <span />
+                      <span className="text-sm font-bold text-slate-600">Deg</span>
+                      <span className="text-sm font-bold text-slate-600">GPA</span>
+                      <span className="text-sm font-bold text-slate-600">Min</span>
+                      <MiniInput fieldKey="minDegreeName" />
+                      <MiniInput fieldKey="minGpa" />
+                      <span className="text-sm font-bold text-slate-600">Hi</span>
+                      <MiniInput fieldKey="higherDegreeName" />
+                      <MiniInput fieldKey="higherGpa" />
+                    </div>
+                  </div>
+
+                  {englishVisible && (
+                    <div
+                      className="min-w-0 rounded border border-sky-200/80 bg-sky-50/40 p-1.5"
+                    >
+                      <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-sky-800/80">
+                        English
+                      </p>
+                      <div
+                        className="grid grid-cols-[2rem_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
+                      >
+                        <span />
+                        {ENGLISH_TESTS.map((test) => {
+                          const show =
+                            hasField(test.overall, draft, row) ||
+                            hasField(test.section, draft, row);
+                          if (!show) return null;
+                          return (
+                            <span
+                              key={`${test.name}-h`}
+                              className="text-center text-sm font-bold text-sky-900/80"
+                            >
+                              {test.name}
+                            </span>
+                          );
+                        })}
+                        <span className="text-sm font-bold text-slate-600">Over</span>
+                        {ENGLISH_TESTS.map((test) => {
+                          const show =
+                            hasField(test.overall, draft, row) ||
+                            hasField(test.section, draft, row);
+                          if (!show) return null;
+                          return (
+                            <MiniInput
+                              key={`${test.name}-o`}
+                              fieldKey={test.overall}
+                            />
+                          );
+                        })}
+                        <span className="text-sm font-bold text-slate-600">Min</span>
+                        {ENGLISH_TESTS.map((test) => {
+                          const show =
+                            hasField(test.overall, draft, row) ||
+                            hasField(test.section, draft, row);
+                          if (!show) return null;
+                          return (
+                            <MiniInput
+                              key={`${test.name}-m`}
+                              fieldKey={test.section}
+                            />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
                 </div>
               </div>
-            </div>
+            ) : (
+              <>
+                {renderIdentityLayout()}
+
+                <div className="flex w-full flex-wrap items-start gap-2">
+                  <div
+                    className="rounded border border-violet-200/80 bg-violet-50/40 p-1.5"
+                  >
+                    <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-violet-800/80">
+                      Academic
+                    </p>
+                    <div
+                      className="grid grid-cols-[2rem_minmax(4.5rem,1fr)_minmax(3.5rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
+                    >
+                      <span />
+                      <span className="text-sm font-bold text-slate-600">Deg</span>
+                      <span className="text-sm font-bold text-slate-600">GPA</span>
+                      <span className="text-sm font-bold text-slate-600">Min</span>
+                      <MiniInput fieldKey="minDegreeName" />
+                      <MiniInput fieldKey="minGpa" />
+                      <span className="text-sm font-bold text-slate-600">Hi</span>
+                      <MiniInput fieldKey="higherDegreeName" />
+                      <MiniInput fieldKey="higherGpa" />
+                    </div>
+                  </div>
+
+                  {englishVisible && (
+                    <div
+                      className="rounded border border-sky-200/80 bg-sky-50/40 p-1.5"
+                    >
+                      <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-sky-800/80">
+                        English
+                      </p>
+                      <div
+                        className="grid grid-cols-[2rem_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
+                      >
+                        <span />
+                        {ENGLISH_TESTS.map((test) => {
+                          const show =
+                            hasField(test.overall, draft, row) ||
+                            hasField(test.section, draft, row);
+                          if (!show) return null;
+                          return (
+                            <span
+                              key={`${test.name}-h`}
+                              className="text-center text-sm font-bold text-sky-900/80"
+                            >
+                              {test.name}
+                            </span>
+                          );
+                        })}
+                        <span className="text-sm font-bold text-slate-600">Over</span>
+                        {ENGLISH_TESTS.map((test) => {
+                          const show =
+                            hasField(test.overall, draft, row) ||
+                            hasField(test.section, draft, row);
+                          if (!show) return null;
+                          return (
+                            <MiniInput key={`${test.name}-o`} fieldKey={test.overall} />
+                          );
+                        })}
+                        <span className="text-sm font-bold text-slate-600">Min</span>
+                        {ENGLISH_TESTS.map((test) => {
+                          const show =
+                            hasField(test.overall, draft, row) ||
+                            hasField(test.section, draft, row);
+                          if (!show) return null;
+                          return (
+                            <MiniInput key={`${test.name}-m`} fieldKey={test.section} />
+                          );
+                        })}
+                      </div>
+                    </div>
+                  )}
+
+                  <div
+                    className="flex max-w-full flex-col gap-1 rounded border border-amber-200/80 bg-amber-50/35 p-1.5"
+                  >
+                    <p className="text-sm font-bold uppercase tracking-wide text-amber-900/70">
+                      Scholarship
+                    </p>
+                    <Cell fieldKey="scholarshipName" fitWidth boxClassName="max-w-full" />
+                    <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+                      <Cell
+                        fieldKey="scholarshipAmount"
+                        fitWidth
+                        inputClassName="tabular-nums"
+                      />
+                      <Cell fieldKey="scholarshipType" fitWidth />
+                    </div>
+                  </div>
+                </div>
+              </>
+            )}
 
             {/* Row 4: Fees — full width, no gap on the right */}
             <div
