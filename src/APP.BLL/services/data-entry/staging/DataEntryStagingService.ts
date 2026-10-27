@@ -255,6 +255,32 @@ export class DataEntryStagingService {
     return row;
   }
 
+  /**
+   * Re-run validation on every row of a batch (e.g. after validation rules change).
+   * Published batches are left untouched.
+   */
+  async revalidateBatch(batchId: string): Promise<DataEntryBatches> {
+    const batch = await this.getBatch(batchId);
+    if (batch.status === DataEntryBatchStatus.PUBLISHED) {
+      throw new ConflictException('Published batches cannot be revalidated');
+    }
+    const rows = await this.db.Set(DataEntryCourseRows).find({
+      where: { batchId },
+      order: { rowIndex: 'ASC' },
+    });
+    for (const row of rows) {
+      const normalized = normalizeStagingCourseRow(row.fields as CsvRow);
+      const courseRow = normalizeCourseCsvRow(normalized as CsvRow);
+      const fieldErrors = this.validator.validateRowFieldErrors(courseRow);
+      row.fields = normalized;
+      row.fieldErrors = fieldErrors;
+      row.isValid = Object.keys(fieldErrors).length === 0;
+    }
+    await this.db.Set(DataEntryCourseRows).save(rows);
+    await this.recomputeBatchCounts(batchId);
+    return this.getBatch(batchId);
+  }
+
   private async recomputeBatchCounts(batchId: string): Promise<void> {
     const invalidRowCount = await this.db
       .Set(DataEntryCourseRows)

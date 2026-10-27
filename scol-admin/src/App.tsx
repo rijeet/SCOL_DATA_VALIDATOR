@@ -7,6 +7,7 @@ import {
   workSessionPath,
 } from './lib/workSession';
 import { LoginPage } from './pages/LoginPage';
+import { ReimportPage } from './pages/ReimportPage';
 import { RowEditorPage } from './pages/RowEditorPage';
 import { UniversitiesPage } from './pages/UniversitiesPage';
 
@@ -70,6 +71,14 @@ export default function App() {
     <Routes>
       <Route path="/login" element={<LoginPage />} />
       <Route path="/universities" element={<UniversitiesGate />} />
+      <Route
+        path="/reimport"
+        element={
+          <RequireAuth>
+            <ReimportPage />
+          </RequireAuth>
+        }
+      />
       <Route
         path="/work/:batchId/rows/:rowIndex"
         element={

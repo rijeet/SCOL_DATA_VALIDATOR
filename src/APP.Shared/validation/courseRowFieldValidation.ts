@@ -1,6 +1,7 @@
 /**
  * Pure course-row checks: GPA scale by degree label, English test score caps,
- * and soft "Missing" flags for data-entry columns present on the row.
+ * and "Missing" flags for required (*) data-entry columns present on the row.
+ * Only required fields can produce errors; all other fields are optional.
  */
 
 export type CourseRowFields = Record<string, string | undefined>;
@@ -18,23 +19,43 @@ const GPA_SCALE_FOUR_EXACT = new Set([
   'PHD',
 ]);
 
-/** Columns that are optional in CSV but should show as missing during manual entry. */
-export const COURSE_ROW_RECOMMENDED_FIELDS = [
+/**
+ * Required (*) fields. Only these can produce an error; every other column is optional.
+ * Keep in sync with scol-admin/src/lib/courseRowFieldValidation.ts.
+ */
+export const COURSE_ROW_REQUIRED_FIELDS = [
+  'uniName',
+  'programmeName',
+  'courseName',
+  'degreeName',
+  'intakeInfo',
+  'minDegreeName',
+  'minGpa',
+  'ieltsMinOverall',
+  'ieltsMinSection',
+  'scholarshipName',
+  'scholarshipAmount',
+  'scholarshipType',
   'tuitionFee',
   'currency',
   'initialDeposit',
-  'applicationFee',
-  'commission',
-  'applicationDeadline',
-  'ieltsMinOverall',
-  'ieltsMinSection',
-  'toeflMinOverall',
-  'toeflMinSection',
-  'pteMinOverall',
-  'pteMinSection',
   'courseDuration',
   'courseUrlExternal',
+  'AcademicRequirementsMetaData',
+  'feesMetaData',
+  'scholarshipMetaData',
 ] as const;
+
+/** @deprecated Use COURSE_ROW_REQUIRED_FIELDS. */
+export const COURSE_ROW_RECOMMENDED_FIELDS = COURSE_ROW_REQUIRED_FIELDS;
+
+const REQUIRED_FIELD_SET: ReadonlySet<string> = new Set(
+  COURSE_ROW_REQUIRED_FIELDS,
+);
+
+export function isCourseRowFieldRequired(fieldKey: string): boolean {
+  return REQUIRED_FIELD_SET.has(fieldKey);
+}
 
 type EnglishField =
   | 'ieltsMinOverall'
@@ -135,9 +156,9 @@ function englishPairErrors(row: CourseRowFields): Record<string, string> {
   return out;
 }
 
-function recommendedMissingErrors(row: CourseRowFields): Record<string, string> {
+function requiredMissingErrors(row: CourseRowFields): Record<string, string> {
   const out: Record<string, string> = {};
-  for (const key of COURSE_ROW_RECOMMENDED_FIELDS) {
+  for (const key of COURSE_ROW_REQUIRED_FIELDS) {
     if (!(key in row)) continue;
     const v = (row[key] ?? '').trim();
     if (v === '') out[key] = 'Missing';
@@ -146,7 +167,8 @@ function recommendedMissingErrors(row: CourseRowFields): Record<string, string> 
 }
 
 /**
- * Score ranges, GPA scales, English pairs, and recommended-field completeness.
+ * Score ranges, GPA scales, English pairs, and required-field completeness,
+ * reduced to errors on required (*) fields only.
  * Does not replace hard CSV required columns or intake/JSON parsing (see CourseRowValidator).
  */
 export function validateCourseRowScoreAndCompleteness(
@@ -175,7 +197,12 @@ export function validateCourseRowScoreAndCompleteness(
   }
 
   Object.assign(errors, englishPairErrors(row));
-  Object.assign(errors, recommendedMissingErrors(row));
+  Object.assign(errors, requiredMissingErrors(row));
 
-  return errors;
+  // Only required (*) fields can produce an error; every other field is optional.
+  const requiredOnly: Record<string, string> = {};
+  for (const [key, msg] of Object.entries(errors)) {
+    if (REQUIRED_FIELD_SET.has(key)) requiredOnly[key] = msg;
+  }
+  return requiredOnly;
 }

@@ -1,0 +1,25 @@
+$Project = "D:\Project Next\SCOL_DATA_VALIDATOR"
+$Zip     = "D:\Project Next\SCOL_DATA_VALIDATOR\scol-autosave-fix.zip"
+
+$tmp    = Join-Path $env:TEMP "scol-changes-tmp"
+$backup = Join-Path $Project ("_backup_" + (Get-Date -Format "yyyyMMdd-HHmmss"))
+if (Test-Path $tmp) { Remove-Item $tmp -Recurse -Force }
+Expand-Archive -Path $Zip -DestinationPath $tmp -Force
+
+Get-ChildItem $tmp -Recurse -File | ForEach-Object {
+  $rel    = $_.FullName.Substring($tmp.Length).TrimStart('\')
+  $target = Join-Path $Project $rel
+  if (Test-Path $target) {
+    $bak = Join-Path $backup $rel
+    New-Item -ItemType Directory -Force -Path (Split-Path $bak) | Out-Null
+    Copy-Item $target $bak -Force
+    $action = "updated"
+  } else {
+    New-Item -ItemType Directory -Force -Path (Split-Path $target) | Out-Null
+    $action = "created"
+  }
+  Copy-Item $_.FullName $target -Force
+  Write-Host "$action  $rel"
+}
+Remove-Item $tmp -Recurse -Force
+Write-Host "Done. Backups: $backup"

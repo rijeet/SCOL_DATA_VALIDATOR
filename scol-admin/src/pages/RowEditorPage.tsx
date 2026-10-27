@@ -1,3 +1,4 @@
+import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { FieldErrorTooltip } from '../components/FieldErrorTooltip';
@@ -10,7 +11,10 @@ import {
   fetchInvalidRowIndexes,
   resolveInitialRowIndex,
 } from '../lib/batchInvalidRows';
-import { validateCourseRowScoreAndCompleteness } from '../lib/courseRowFieldValidation';
+import {
+  isCourseRowFieldRequired,
+  validateCourseRowScoreAndCompleteness,
+} from '../lib/courseRowFieldValidation';
 import {
   getJsonParseError,
   prettifyJson,
@@ -86,6 +90,27 @@ const LABELS: Record<string, string> = {
   courseUrlExternal: 'Course URL',
 };
 
+const IDENTITY_PLACEHOLDERS: Record<string, string> = {
+  uniName: 'Enter uni name',
+  programmeName: 'Enter programme name',
+  courseName: 'Enter course name',
+};
+
+function RequiredMark({
+  fieldKey,
+  className = 'ml-0.5',
+}: {
+  fieldKey: string;
+  className?: string;
+}) {
+  if (!isCourseRowFieldRequired(fieldKey)) return null;
+  return (
+    <span className={`${className} text-red-600`} aria-hidden title="Required">
+      *
+    </span>
+  );
+}
+
 const ENGLISH_TESTS = [
   { name: 'IELTS', overall: 'ieltsMinOverall', section: 'ieltsMinSection' },
   { name: 'TOEFL', overall: 'toeflMinOverall', section: 'toeflMinSection' },
@@ -93,9 +118,9 @@ const ENGLISH_TESTS = [
 ] as const;
 
 /** Wait after last keystroke before auto-save (finish typing / full word). */
-const AUTO_SAVE_IDLE_MS = 2200;
-/** After a word delimiter, still wait this long (not instant). */
-const AUTO_SAVE_AFTER_WORD_MS = 1400;
+const AUTO_SAVE_IDLE_MS = 800;
+/** After a word delimiter (space, comma…), save a little sooner. */
+const AUTO_SAVE_AFTER_WORD_MS = 400;
 
 function endsWordDelimiter(value: string): boolean {
   if (!value) return false;
@@ -108,6 +133,15 @@ function hasField(
   row: RowResponse | null,
 ) {
   return draft[key] !== undefined || row?.fields[key] !== undefined;
+}
+
+function sameFields(
+  a: Record<string, string>,
+  b: Record<string, string>,
+): boolean {
+  const ak = Object.keys(a);
+  if (ak.length !== Object.keys(b).length) return false;
+  return ak.every((k) => a[k] === b[k]);
 }
 
 export function RowEditorPage() {
@@ -132,8 +166,21 @@ export function RowEditorPage() {
   const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const savingRef = useRef(false);
   const loadedBatchIdRef = useRef<string | null>(null);
+  /** Row number whose data is in the form (differs from the URL row while a new row loads). */
+  const shownIdxRef = useRef<number | null>(null);
+  /** Last fields known to be saved (or requested) for the shown row. */
+  const lastSavedRef = useRef<Record<string, string>>({});
+  /** Saves waiting for the one in flight, keyed by row number. */
+  const pendingSavesRef = useRef(new Map<number, Record<string, string>>());
+  /** Row + fields of an autosave timer that has not fired yet. */
+  const scheduledRef = useRef<{
+    idx: number;
+    fields: Record<string, string>;
+  } | null>(null);
+  const loadSeqRef = useRef(0);
+  const batchRowCountRef = useRef<number | undefined>(undefined);
 
-  draftRef.current = draft;
+  batchRowCountRef.current = batch?.rowCount;
 
   const refreshInvalidRows = useCallback(async () => {
     if (!batchId) return;
@@ -166,6 +213,7 @@ export function RowEditorPage() {
 
   const load = useCallback(async () => {
     if (!batchId) return;
+    const seq = ++loadSeqRef.current;
     const openingBatch = loadedBatchIdRef.current !== batchId;
     if (openingBatch) {
       setShowSplash(true);
@@ -184,10 +232,15 @@ export function RowEditorPage() {
         const r = await apiFetch<RowResponse>(
           `/data-entry/batches/${batchId}/rows/${targetIdx}`,
         );
+        if (seq !== loadSeqRef.current) return;
+        const pretty = prettifyMetaFields(r.fields);
         loadedBatchIdRef.current = batchId;
+        shownIdxRef.current = targetIdx;
+        lastSavedRef.current = pretty;
+        draftRef.current = pretty;
         setBatch(b);
         setRow(r);
-        setDraft(prettifyMetaFields(r.fields));
+        setDraft(pretty);
         setWorkSession({
           batchId,
           rowIndex: targetIdx,
@@ -200,9 +253,16 @@ export function RowEditorPage() {
         const r = await apiFetch<RowResponse>(
           `/data-entry/batches/${batchId}/rows/${idx}`,
         );
+        // A newer row was requested while this one was loading.
+        if (seq !== loadSeqRef.current) return;
+        const pretty = prettifyMetaFields(r.fields);
+        shownIdxRef.current = idx;
+        lastSavedRef.current = pretty;
+        draftRef.current = pretty;
         setRow(r);
-        setDraft(prettifyMetaFields(r.fields));
-        updateWorkSessionRow(idx, batch?.rowCount);
+        setDraft(pretty);
+        setSaveState('idle');
+        updateWorkSessionRow(idx, batchRowCountRef.current);
       }
     } catch (e) {
       if (openingBatch) {
@@ -210,7 +270,7 @@ export function RowEditorPage() {
       }
       throw e;
     }
-  }, [batchId, idx, batch?.rowCount, navigate, refreshPublishReadiness]);
+  }, [batchId, idx, navigate, refreshPublishReadiness]);
 
   async function publishToCatalog() {
     if (!batchId || !publishReadiness?.canPublish) return;
@@ -267,46 +327,89 @@ export function RowEditorPage() {
     return merged;
   }, [row, draft]);
 
+  /**
+   * Saves a row. Always saves to `targetIdx` (never to whatever row is on screen
+   * now), queues while another save is running, and never overwrites text the
+   * user typed after the request was sent.
+   */
   const persistRow = useCallback(
-    async (fields: Record<string, string>) => {
-      if (!batchId || savingRef.current) return;
+    async (targetIdx: number, fields: Record<string, string>) => {
+      if (!batchId) return;
+      if (shownIdxRef.current === targetIdx) {
+        lastSavedRef.current = fields;
+      }
+      pendingSavesRef.current.set(targetIdx, fields);
+      if (savingRef.current) return;
+
       savingRef.current = true;
-      setSaveState('saving');
+      let didSave = false;
       try {
-        const updated = await apiFetch<RowResponse>(
-          `/data-entry/batches/${batchId}/rows/${idx}`,
-          { method: 'PATCH', body: JSON.stringify({ fields }) },
-        );
-        setRow(updated);
-        setDraft(prettifyMetaFields(updated.fields));
-        setSaveState('saved');
-        const b = await apiFetch<BatchResponse>(
-          `/data-entry/batches/${batchId}`,
-        );
-        setBatch(b);
-        await refreshPublishReadiness();
-      } catch {
-        setSaveState('error');
+        for (;;) {
+          const entry = pendingSavesRef.current.entries().next();
+          if (entry.done) break;
+          const [saveIdx, sent] = entry.value;
+          pendingSavesRef.current.delete(saveIdx);
+          const onScreen = () => shownIdxRef.current === saveIdx;
+
+          if (onScreen()) setSaveState('saving');
+          try {
+            const updated = await apiFetch<RowResponse>(
+              `/data-entry/batches/${batchId}/rows/${saveIdx}`,
+              { method: 'PATCH', body: JSON.stringify({ fields: sent }) },
+            );
+            didSave = true;
+            // Only refresh errors/status if the user has not typed since.
+            if (onScreen() && draftRef.current === sent) {
+              setRow(updated);
+              setSaveState('saved');
+            }
+          } catch {
+            if (onScreen()) {
+              lastSavedRef.current = {};
+              setSaveState('error');
+            }
+          }
+        }
       } finally {
         savingRef.current = false;
       }
+
+      if (didSave) {
+        try {
+          const b = await apiFetch<BatchResponse>(
+            `/data-entry/batches/${batchId}`,
+          );
+          setBatch(b);
+          await refreshPublishReadiness();
+        } catch {
+          /* counts refresh on the next save */
+        }
+      }
     },
-    [batchId, idx, refreshPublishReadiness],
+    [batchId, refreshPublishReadiness],
   );
+
+  const persistRowRef = useRef(persistRow);
+  persistRowRef.current = persistRow;
 
   const scheduleSave = useCallback(
     (fields: Record<string, string>, opts?: { wordCompleted?: boolean }) => {
+      const rowAtEdit = shownIdxRef.current;
+      if (rowAtEdit === null) return;
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
       }
       const delay = opts?.wordCompleted
         ? AUTO_SAVE_AFTER_WORD_MS
         : AUTO_SAVE_IDLE_MS;
+      scheduledRef.current = { idx: rowAtEdit, fields };
       saveTimerRef.current = setTimeout(() => {
-        void persistRow(fields);
+        saveTimerRef.current = null;
+        scheduledRef.current = null;
+        void persistRowRef.current(rowAtEdit, fields);
       }, delay);
     },
-    [persistRow],
+    [],
   );
 
   const flushSave = useCallback(async () => {
@@ -314,7 +417,12 @@ export function RowEditorPage() {
       clearTimeout(saveTimerRef.current);
       saveTimerRef.current = null;
     }
-    await persistRow(draftRef.current);
+    scheduledRef.current = null;
+    const rowOnScreen = shownIdxRef.current;
+    if (rowOnScreen === null) return;
+    const fields = draftRef.current;
+    if (sameFields(fields, lastSavedRef.current)) return;
+    await persistRow(rowOnScreen, fields);
   }, [persistRow]);
 
   const goToRowNumber = useCallback(
@@ -334,13 +442,20 @@ export function RowEditorPage() {
     [batch?.rowCount, batchId, flushSave, idx, navigate],
   );
 
+  // When the row changes (or the page closes), send any edit still waiting on the timer.
   useEffect(() => {
     return () => {
+      const waiting = scheduledRef.current;
       if (saveTimerRef.current) {
         clearTimeout(saveTimerRef.current);
+        saveTimerRef.current = null;
+      }
+      scheduledRef.current = null;
+      if (waiting) {
+        void persistRowRef.current(waiting.idx, waiting.fields);
       }
     };
-  }, []);
+  }, [idx]);
 
   function setField(key: string, value: string) {
     const prev = draftRef.current[key] ?? '';
@@ -348,12 +463,10 @@ export function RowEditorPage() {
       value.length > 0 &&
       value.length >= prev.length &&
       endsWordDelimiter(value);
-    setDraft((d) => {
-      const next = { ...d, [key]: value };
-      draftRef.current = next;
-      scheduleSave(next, { wordCompleted });
-      return next;
-    });
+    const next = { ...draftRef.current, [key]: value };
+    draftRef.current = next;
+    setDraft(next);
+    scheduleSave(next, { wordCompleted });
     setSaveState('idle');
   }
 
@@ -437,6 +550,7 @@ export function RowEditorPage() {
       >
         <span className="whitespace-nowrap text-sm font-bold text-slate-700">
           {text}
+          <RequiredMark fieldKey={fieldKey} />
         </span>
         <FieldErrorTooltip {...fieldTooltipProps(fieldKey)} className="w-full">
           {multiline ? (
@@ -475,12 +589,9 @@ export function RowEditorPage() {
     const raw = draftRef.current[key] ?? '';
     const pretty = prettifyJson(raw);
     if (pretty !== raw) {
-      setDraft((d) => {
-        const next = { ...d, [key]: pretty };
-        draftRef.current = next;
-        scheduleSave(next);
-        return next;
-      });
+      const next = { ...draftRef.current, [key]: pretty };
+      draftRef.current = next;
+      setDraft(next);
     }
     void flushSave();
   }
@@ -507,7 +618,10 @@ export function RowEditorPage() {
       >
         <header className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 px-2 py-1">
           <div className="flex min-w-0 items-center gap-1.5">
-            <h2 className="text-sm font-bold text-slate-800">{title}</h2>
+            <h2 className="text-sm font-bold text-slate-800">
+              {title}
+              <RequiredMark fieldKey={key} />
+            </h2>
             {(serverErr || jsonErr) && (
               <FieldErrorTooltip
                 fieldKey={key}
@@ -630,22 +744,26 @@ export function RowEditorPage() {
     if (!hasField(fieldKey, draft, row)) return null;
     const value = draft[fieldKey] ?? '';
     return (
-      <FieldErrorTooltip
-        {...fieldTooltipProps(fieldKey)}
-        className="block min-w-0"
-      >
-        <input
-          className={inputClass(
-            fieldKey,
-            `w-full min-w-0 border-0 bg-transparent px-0 py-0 shadow-none focus:rounded focus:ring-1 focus:ring-slate-300 ${textClass}`,
-          )}
-          value={value}
-          onChange={(e) => setField(fieldKey, e.target.value)}
-          onBlur={() => void flushSave()}
-          aria-label={LABELS[fieldKey] ?? fieldKey}
-          aria-invalid={Boolean(displayFieldErrors[fieldKey])}
-        />
-      </FieldErrorTooltip>
+      <div className="flex min-w-0 items-center gap-1">
+        <RequiredMark fieldKey={fieldKey} className="shrink-0" />
+        <FieldErrorTooltip
+          {...fieldTooltipProps(fieldKey)}
+          className="block min-w-0 flex-1"
+        >
+          <input
+            className={inputClass(
+              fieldKey,
+              `w-full min-w-0 border-0 bg-transparent px-0 py-0 shadow-none focus:rounded focus:ring-1 focus:ring-slate-300 ${textClass}`,
+            )}
+            value={value}
+            onChange={(e) => setField(fieldKey, e.target.value)}
+            onBlur={() => void flushSave()}
+            placeholder={IDENTITY_PLACEHOLDERS[fieldKey]}
+            aria-label={LABELS[fieldKey] ?? fieldKey}
+            aria-invalid={Boolean(displayFieldErrors[fieldKey])}
+          />
+        </FieldErrorTooltip>
+      </div>
     );
   }
 
@@ -657,6 +775,7 @@ export function RowEditorPage() {
       <div className={`flex min-w-0 flex-col gap-0 ${boxClass}`}>
         <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
           {label}
+          <RequiredMark fieldKey={fieldKey} />
         </span>
         <FieldErrorTooltip {...fieldTooltipProps(fieldKey)} className="min-w-0">
           <input
@@ -736,7 +855,7 @@ export function RowEditorPage() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-slate-100">
-      <header className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-200 bg-white px-3 py-1.5">
+      <header className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-slate-200 bg-white px-3 py-1.5">
         <div className="min-w-0">
           <button
             type="button"
@@ -765,7 +884,48 @@ export function RowEditorPage() {
             )}
           </p>
         </div>
-        <div className="flex shrink-0 items-center gap-1.5">
+        <nav
+          aria-label="Course navigation"
+          className="flex items-center justify-center gap-1"
+        >
+          {sequentialPrev ? (
+            <Link
+              to={`/work/${batchId}/rows/${sequentialPrev}`}
+              onClick={() => void flushSave()}
+              aria-label="Previous course"
+              title="Previous course"
+              className="inline-flex h-7 w-9 items-center justify-center rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+            >
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+            </Link>
+          ) : (
+            <span
+              aria-hidden
+              className="inline-flex h-7 w-9 items-center justify-center rounded border border-slate-200 text-slate-300"
+            >
+              <ChevronLeft className="h-4 w-4" />
+            </span>
+          )}
+          {sequentialNext ? (
+            <Link
+              to={`/work/${batchId}/rows/${sequentialNext}`}
+              onClick={() => void flushSave()}
+              aria-label="Next course"
+              title="Next course"
+              className="inline-flex h-7 w-9 items-center justify-center rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+            >
+              <ChevronRight className="h-4 w-4" aria-hidden />
+            </Link>
+          ) : (
+            <span
+              aria-hidden
+              className="inline-flex h-7 w-9 items-center justify-center rounded border border-slate-200 text-slate-300"
+            >
+              <ChevronRight className="h-4 w-4" />
+            </span>
+          )}
+        </nav>
+        <div className="flex shrink-0 items-center justify-end gap-1.5">
           <form
             className="flex items-center gap-1"
             onSubmit={(e) => {
@@ -798,7 +958,7 @@ export function RowEditorPage() {
               Go
             </button>
           </form>
-          {prev && (
+          {fixMode && prev && (
             <Link
               to={`/work/${batchId}/rows/${prev}`}
               onClick={() => void flushSave()}
@@ -807,7 +967,7 @@ export function RowEditorPage() {
               {fixMode ? 'Prev issue' : 'Prev'}
             </Link>
           )}
-          {next && (
+          {fixMode && next && (
             <Link
               to={`/work/${batchId}/rows/${next}`}
               onClick={() => void flushSave()}
@@ -991,7 +1151,10 @@ export function RowEditorPage() {
                       <span />
                       <span className="text-sm font-bold text-slate-600">Deg</span>
                       <span className="text-sm font-bold text-slate-600">GPA</span>
-                      <span className="text-sm font-bold text-slate-600">Min</span>
+                      <span className="text-sm font-bold text-slate-600">
+                        Min
+                        <RequiredMark fieldKey="minDegreeName" />
+                      </span>
                       <MiniInput fieldKey="minDegreeName" />
                       <MiniInput fieldKey="minGpa" />
                       <span className="text-sm font-bold text-slate-600">Hi</span>
@@ -1022,6 +1185,7 @@ export function RowEditorPage() {
                               className="text-center text-sm font-bold text-sky-900/80"
                             >
                               {test.name}
+                              <RequiredMark fieldKey={test.overall} />
                             </span>
                           );
                         })}
@@ -1073,7 +1237,10 @@ export function RowEditorPage() {
                       <span />
                       <span className="text-sm font-bold text-slate-600">Deg</span>
                       <span className="text-sm font-bold text-slate-600">GPA</span>
-                      <span className="text-sm font-bold text-slate-600">Min</span>
+                      <span className="text-sm font-bold text-slate-600">
+                        Min
+                        <RequiredMark fieldKey="minDegreeName" />
+                      </span>
                       <MiniInput fieldKey="minDegreeName" />
                       <MiniInput fieldKey="minGpa" />
                       <span className="text-sm font-bold text-slate-600">Hi</span>
@@ -1104,6 +1271,7 @@ export function RowEditorPage() {
                               className="text-center text-sm font-bold text-sky-900/80"
                             >
                               {test.name}
+                              <RequiredMark fieldKey={test.overall} />
                             </span>
                           );
                         })}
@@ -1214,6 +1382,7 @@ export function RowEditorPage() {
                       onClick={() => setActiveMetaTab(tab.key)}
                     >
                       {tab.label}
+                      <RequiredMark fieldKey={tab.key} />
                       {hasIssue ? ' !' : ''}
                     </button>
                   );

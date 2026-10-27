@@ -1,10 +1,25 @@
 import { useEffect, useState } from 'react';
-import { CloudDownload, FileSpreadsheet, LogOut } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
+import {
+  CloudDownload,
+  Download,
+  FileSpreadsheet,
+  LogOut,
+  RefreshCw,
+} from 'lucide-react';
+import { Link, useNavigate } from 'react-router-dom';
 import { LoadingSplash } from '../components/LoadingSplash';
 import { apiFetch, clearAccessToken } from '../lib/api';
+import { exportBatchCsv } from '../lib/exportBatchCsv';
 import { resolveInitialRowIndex } from '../lib/initialWorkRow';
 import { clearWorkSession, setWorkSession } from '../lib/workSession';
+
+/**
+ * Export before every course is valid (for testing).
+ * On in Vite development mode (`npm run dev`), or when VITE_ALLOW_UNVALIDATED_EXPORT=true.
+ */
+const ALLOW_UNVALIDATED_EXPORT =
+  import.meta.env.DEV ||
+  import.meta.env.VITE_ALLOW_UNVALIDATED_EXPORT === 'true';
 
 type StagingSummary = {
   batchId: string;
@@ -47,8 +62,9 @@ export function UniversitiesPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<
-    'import' | 'continue' | 'sync' | null
+    'import' | 'continue' | 'sync' | 'export' | null
   >(null);
+  const [exportProgress, setExportProgress] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -110,19 +126,15 @@ export function UniversitiesPage() {
     }
   }
 
-  async function importFromCloud(uni: UniversityListItem, replace = false) {
+  async function importFromCloud(uni: UniversityListItem) {
     setBusyId(uni.sysUniversityId);
     setBusyAction('import');
     setError(null);
     try {
-      const q = replace ? '?replaceExisting=true' : '';
-      const res = await apiFetch<BatchCreateResponse>(
-        `/data-entry/batches${q}`,
-        {
-          method: 'POST',
-          body: JSON.stringify({ sysUniversityId: uni.sysUniversityId }),
-        },
-      );
+      const res = await apiFetch<BatchCreateResponse>('/data-entry/batches', {
+        method: 'POST',
+        body: JSON.stringify({ sysUniversityId: uni.sysUniversityId }),
+      });
       setUniversities((prev) =>
         prev.map((u) =>
           u.sysUniversityId === uni.sysUniversityId
@@ -146,6 +158,30 @@ export function UniversitiesPage() {
     } finally {
       setBusyId(null);
       setBusyAction(null);
+    }
+  }
+
+  async function exportCourses(uni: UniversityListItem) {
+    const staging = uni.staging;
+    if (!staging) return;
+    setBusyId(uni.sysUniversityId);
+    setBusyAction('export');
+    setExportProgress('');
+    setError(null);
+    try {
+      await exportBatchCsv(
+        staging.batchId,
+        staging.rowCount,
+        uni.uniName,
+        (done, total) => setExportProgress(`${done}/${total}`),
+        staging.invalidRowCount > 0 ? 'unvalidated' : 'fixed',
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Export failed');
+    } finally {
+      setBusyId(null);
+      setBusyAction(null);
+      setExportProgress('');
     }
   }
 
@@ -219,14 +255,23 @@ export function UniversitiesPage() {
             rows in staging.
           </p>
         </div>
-        <button
-          type="button"
-          onClick={logout}
-          className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-600 hover:text-slate-900"
-        >
-          <LogOut className="h-4 w-4" aria-hidden />
-          Log out
-        </button>
+        <div className="flex items-center gap-4">
+          <Link
+            to="/reimport"
+            className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-600 hover:text-slate-900"
+          >
+            <RefreshCw className="h-4 w-4" aria-hidden />
+            Re-import
+          </Link>
+          <button
+            type="button"
+            onClick={logout}
+            className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-600 hover:text-slate-900"
+          >
+            <LogOut className="h-4 w-4" aria-hidden />
+            Log out
+          </button>
+        </div>
       </header>
       {error && <p className="mb-4 text-sm font-bold text-red-600">{error}</p>}
 
@@ -294,20 +339,48 @@ export function UniversitiesPage() {
                     {staging.status === 'PUBLISHED' ? 'View batch' : 'Validate courses'}
                   </button>
                 ) : null}
-                <button
-                  type="button"
-                  disabled={busy}
-                  onClick={() => importFromCloud(u, Boolean(staging))}
-                  className="inline-flex items-center gap-1.5 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 disabled:opacity-40"
-                  title={
-                    staging
-                      ? 'Replace staging from Cloudinary SCOL_DATA folder matching uni name'
-                      : 'Import *_reviewed.csv from Cloudinary'
-                  }
-                >
-                  <CloudDownload className="h-4 w-4" aria-hidden />
-                  {staging ? 'Re-import' : 'Import Cloudinary'}
-                </button>
+                {staging ? (
+                  <button
+                    type="button"
+                    disabled={
+                      busy ||
+                      staging.rowCount === 0 ||
+                      (staging.invalidRowCount > 0 && !ALLOW_UNVALIDATED_EXPORT)
+                    }
+                    onClick={() => void exportCourses(u)}
+                    className={`inline-flex items-center gap-1.5 rounded border px-3 py-2 text-sm font-bold text-white disabled:opacity-40 ${
+                      staging.invalidRowCount > 0
+                        ? 'border-amber-600 bg-amber-600'
+                        : 'border-emerald-600 bg-emerald-600'
+                    }`}
+                    title={
+                      staging.invalidRowCount > 0
+                        ? ALLOW_UNVALIDATED_EXPORT
+                          ? `Testing export: ${staging.invalidRowCount} course(s) are still invalid`
+                          : `Fix ${staging.invalidRowCount} course(s) before exporting`
+                        : 'Download all courses as CSV'
+                    }
+                  >
+                    <Download className="h-4 w-4" aria-hidden />
+                    {busy && busyAction === 'export'
+                      ? `Exporting ${exportProgress}`.trim()
+                      : staging.invalidRowCount > 0
+                        ? 'Export CSV (test)'
+                        : 'Export CSV'}
+                  </button>
+                ) : null}
+                {!staging && (
+                  <button
+                    type="button"
+                    disabled={busy}
+                    onClick={() => importFromCloud(u)}
+                    className="inline-flex items-center gap-1.5 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 disabled:opacity-40"
+                    title="Import *_reviewed.csv from Cloudinary"
+                  >
+                    <CloudDownload className="h-4 w-4" aria-hidden />
+                    Import Cloudinary
+                  </button>
+                )}
               </div>
             </li>
           );

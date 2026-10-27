@@ -11,7 +11,10 @@ import {
   ImportErrorCode,
 } from '../../common/abstractions/ImportErrorCode';
 import { parseMetaDataItems } from '../../common/engine/MetaDataParser';
-import { validateCourseRowScoreAndCompleteness } from '@shared/validation/courseRowFieldValidation';
+import {
+  isCourseRowFieldRequired,
+  validateCourseRowScoreAndCompleteness,
+} from '@shared/validation/courseRowFieldValidation';
 
 export type { CourseCsvRow, ErrorCourseRow };
 
@@ -141,6 +144,11 @@ export class CourseRowValidator {
       }
     }
 
-    return errors;
+    // Only required (*) fields are errors; all other fields are optional.
+    const requiredOnly: Record<string, string> = {};
+    for (const [key, msg] of Object.entries(errors)) {
+      if (isCourseRowFieldRequired(key)) requiredOnly[key] = msg;
+    }
+    return requiredOnly;
   }
 }
