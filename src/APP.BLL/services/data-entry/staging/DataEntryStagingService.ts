@@ -1,3 +1,4 @@
+import { isCourseRowFieldRequired } from '@shared/validation/courseRowFieldValidation';
 import {
   Injectable,
   NotFoundException,
@@ -198,7 +199,7 @@ export class DataEntryStagingService {
       const fields = normalizeStagingCourseRow(raw as CsvRow);
       const courseRow = normalizeCourseCsvRow(fields as CsvRow);
       const fieldErrors = this.validator.validateRowFieldErrors(courseRow);
-      const isValid = Object.keys(fieldErrors).length === 0;
+      const isValid = !Object.keys(fieldErrors).some(isCourseRowFieldRequired);
       if (!isValid) invalidCount++;
 
       rowEntities.push(
@@ -243,7 +244,7 @@ export class DataEntryStagingService {
     const normalized = normalizeStagingCourseRow(merged as CsvRow);
     const courseRow = normalizeCourseCsvRow(normalized as CsvRow);
     const fieldErrors = this.validator.validateRowFieldErrors(courseRow);
-    const isValid = Object.keys(fieldErrors).length === 0;
+    const isValid = !Object.keys(fieldErrors).some(isCourseRowFieldRequired);
 
     row.fields = normalized;
     row.fieldErrors = fieldErrors;
@@ -274,7 +275,7 @@ export class DataEntryStagingService {
       const fieldErrors = this.validator.validateRowFieldErrors(courseRow);
       row.fields = normalized;
       row.fieldErrors = fieldErrors;
-      row.isValid = Object.keys(fieldErrors).length === 0;
+      row.isValid = !Object.keys(fieldErrors).some(isCourseRowFieldRequired);
     }
     await this.db.Set(DataEntryCourseRows).save(rows);
     await this.recomputeBatchCounts(batchId);

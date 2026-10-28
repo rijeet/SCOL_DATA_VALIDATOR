@@ -23,7 +23,7 @@ export const FIELD_FORMAT_HINTS: Record<string, string> = {
   initialDeposit: 'Numbers only — empty shows as Missing',
   applicationFee: 'Numbers only — empty shows as Missing',
   commission: 'Numbers only — empty shows as Missing',
-  applicationDeadline: 'e.g. 2026-08-31 — empty shows as Missing',
+  applicationDeadline: 'e.g. 08-31-2026 — empty shows as Missing',
   courseDuration: 'Months as a number, e.g. 12 — empty shows as Missing',
   courseUrlExternal: 'Full course URL — empty shows as Missing',
 };

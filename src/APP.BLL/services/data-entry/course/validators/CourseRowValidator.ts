@@ -38,7 +38,8 @@ export class CourseRowValidator {
     const invalid: ErrorCourseRow[] = [];
     for (const row of rows) {
       const fieldErrors = this.validateRowFieldErrors(row);
-      if (Object.keys(fieldErrors).length > 0) {
+      const hasRequiredErrors = Object.keys(fieldErrors).some(isCourseRowFieldRequired);
+      if (hasRequiredErrors) {
         const errorReason = formatImportError(
           ImportErrorCode.INVALID_FORMAT,
           Object.entries(fieldErrors)
@@ -144,11 +145,7 @@ export class CourseRowValidator {
       }
     }
 
-    // Only required (*) fields are errors; all other fields are optional.
-    const requiredOnly: Record<string, string> = {};
-    for (const [key, msg] of Object.entries(errors)) {
-      if (isCourseRowFieldRequired(key)) requiredOnly[key] = msg;
-    }
-    return requiredOnly;
+    // Preserve all errors for the editor; required (*) errors alone invalidate a row.
+    return errors;
   }
 }

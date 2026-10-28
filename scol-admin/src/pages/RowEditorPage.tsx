@@ -344,7 +344,7 @@ export function RowEditorPage() {
       savingRef.current = true;
       let didSave = false;
       try {
-        for (;;) {
+        for (; ;) {
           const entry = pendingSavesRef.current.entries().next();
           if (entry.done) break;
           const [saveIdx, sent] = entry.value;
@@ -486,7 +486,11 @@ export function RowEditorPage() {
     return [
       width === 'full' ? 'w-full' : 'field-fit',
       'rounded border px-1.5 py-0.5 text-sm font-bold leading-tight',
-      invalid ? 'border-red-400 bg-red-50' : 'border-slate-300/80 bg-white',
+      invalid
+        ? isCourseRowFieldRequired(key)
+          ? 'border-red-400 bg-red-50'
+          : 'border-amber-400 bg-amber-50'
+        : 'border-slate-300/80 bg-white',
       extra,
     ].join(' ');
   }
@@ -610,11 +614,12 @@ export function RowEditorPage() {
     return (
       <section
         key={key}
-        className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border shadow-sm ${
-          serverErr || jsonErr
-            ? 'border-red-200 bg-white'
+        className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border shadow-sm ${serverErr || jsonErr
+            ? isCourseRowFieldRequired(key)
+              ? 'border-red-200 bg-white'
+              : 'border-amber-200 bg-amber-50'
             : 'border-slate-200 bg-white'
-        } ${tint}`}
+          } ${tint}`}
       >
         <header className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 px-2 py-1">
           <div className="flex min-w-0 items-center gap-1.5">
@@ -629,7 +634,10 @@ export function RowEditorPage() {
                 jsonError={jsonErr}
               >
                 <span
-                  className="cursor-help rounded bg-red-100 px-1 py-0.5 text-xs font-bold text-red-700"
+                  className={`cursor-help rounded px-1 py-0.5 text-xs font-bold ${isCourseRowFieldRequired(key)
+                      ? 'bg-red-100 text-red-700'
+                      : 'bg-amber-100 text-amber-800'
+                    }`}
                   tabIndex={0}
                 >
                   !
@@ -654,8 +662,7 @@ export function RowEditorPage() {
           <textarea
             className={inputClass(
               key,
-              `min-h-0 flex-1 resize-none border-0 px-2 py-2 font-mono text-sm font-bold leading-relaxed whitespace-pre shadow-none focus:ring-1 focus:ring-slate-300 ${
-                jsonErr && value.trim() ? 'bg-red-50/50' : 'bg-slate-50/40'
+              `min-h-0 flex-1 resize-none border-0 px-2 py-2 font-mono text-sm font-bold leading-relaxed whitespace-pre shadow-none focus:ring-1 focus:ring-slate-300 ${jsonErr && value.trim() ? 'bg-red-50/50' : 'bg-slate-50/40'
               }`,
             )}
             value={value}
@@ -736,6 +743,10 @@ export function RowEditorPage() {
   const fieldErrorList = Object.entries(displayFieldErrors).filter(([, msg]) =>
     msg?.trim(),
   );
+  const requiredErrorCount = fieldErrorList.filter(([key]) =>
+    isCourseRowFieldRequired(key),
+  ).length;
+  const optionalErrorCount = fieldErrorList.length - requiredErrorCount;
 
   const catalogPublished =
     publishReadiness?.status === 'PUBLISHED' || batch?.status === 'PUBLISHED';
@@ -855,28 +866,30 @@ export function RowEditorPage() {
 
   return (
     <div className="flex h-screen flex-col overflow-hidden bg-slate-100">
-      <header className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 border-b border-slate-200 bg-white px-3 py-1.5">
+      <header className="grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-3 border-b border-slate-200 bg-white px-5 py-3">
         <div className="min-w-0">
           <button
             type="button"
             onClick={exitUniversity}
-            className="text-xs text-slate-600 hover:text-slate-900"
+            className="text-sm font-medium text-slate-600 hover:text-slate-900"
           >
             ← Exit university
           </button>
-          <p className="truncate text-sm font-semibold text-slate-900">
+
+          <p className="truncate text-lg font-bold text-slate-900">
             {batch?.universityKey}
-            <span className="font-normal text-slate-600">
+            <span className="font-medium text-slate-600">
               {' '}
               · {idx}
               {batch ? ` / ${batch.rowCount}` : ''}
             </span>
+
             {row && (
               <span
                 className={
                   row.isValid
-                    ? ' ml-1.5 text-emerald-600'
-                    : ' ml-1.5 text-amber-600'
+                    ? 'ml-2 text-emerald-600'
+                    : 'ml-2 text-amber-600'
                 }
               >
                 {row.isValid ? 'Valid' : 'Errors'}
@@ -884,9 +897,10 @@ export function RowEditorPage() {
             )}
           </p>
         </div>
+
         <nav
           aria-label="Course navigation"
-          className="flex items-center justify-center gap-1"
+          className="flex items-center justify-center gap-2"
         >
           {sequentialPrev ? (
             <Link
@@ -894,46 +908,48 @@ export function RowEditorPage() {
               onClick={() => void flushSave()}
               aria-label="Previous course"
               title="Previous course"
-              className="inline-flex h-7 w-9 items-center justify-center rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+              className="inline-flex h-9 w-11 items-center justify-center rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
             >
-              <ChevronLeft className="h-4 w-4" aria-hidden />
+              <ChevronLeft className="h-5 w-5" aria-hidden />
             </Link>
           ) : (
             <span
               aria-hidden
-              className="inline-flex h-7 w-9 items-center justify-center rounded border border-slate-200 text-slate-300"
+              className="inline-flex h-9 w-11 items-center justify-center rounded border border-slate-200 text-slate-300"
             >
-              <ChevronLeft className="h-4 w-4" />
+              <ChevronLeft className="h-5 w-5" />
             </span>
           )}
+
           {sequentialNext ? (
             <Link
               to={`/work/${batchId}/rows/${sequentialNext}`}
               onClick={() => void flushSave()}
               aria-label="Next course"
               title="Next course"
-              className="inline-flex h-7 w-9 items-center justify-center rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
+              className="inline-flex h-9 w-11 items-center justify-center rounded border border-slate-300 bg-white text-slate-700 hover:bg-slate-50"
             >
-              <ChevronRight className="h-4 w-4" aria-hidden />
+              <ChevronRight className="h-5 w-5" aria-hidden />
             </Link>
           ) : (
             <span
               aria-hidden
-              className="inline-flex h-7 w-9 items-center justify-center rounded border border-slate-200 text-slate-300"
+              className="inline-flex h-9 w-11 items-center justify-center rounded border border-slate-200 text-slate-300"
             >
-              <ChevronRight className="h-4 w-4" />
+              <ChevronRight className="h-5 w-5" />
             </span>
           )}
         </nav>
-        <div className="flex shrink-0 items-center justify-end gap-1.5">
+
+        <div className="flex shrink-0 items-center justify-end gap-2">
           <form
-            className="flex items-center gap-1"
+            className="flex items-center gap-1.5"
             onSubmit={(e) => {
               e.preventDefault();
               void goToRowNumber(jumpRowInput);
             }}
           >
-            <label className="flex items-center gap-1 text-xs font-bold text-slate-600">
+            <label className="flex items-center gap-1.5 text-sm font-bold text-slate-700">
               Row
               <input
                 type="number"
@@ -941,7 +957,7 @@ export function RowEditorPage() {
                 max={batch.rowCount}
                 inputMode="numeric"
                 aria-label={`Go to row 1–${batch.rowCount}`}
-                className="w-14 rounded border border-slate-300 px-1 py-0.5 text-center text-xs font-bold tabular-nums"
+                className="w-16 rounded border border-slate-300 px-2 py-1 text-center text-sm font-bold tabular-nums"
                 value={jumpRowInput}
                 onChange={(e) => setJumpRowInput(e.target.value)}
                 onBlur={() => {
@@ -951,87 +967,95 @@ export function RowEditorPage() {
                 }}
               />
             </label>
+
             <button
               type="submit"
-              className="rounded border border-slate-300 px-2 py-0.5 text-xs font-bold"
+              className="rounded border border-slate-300 px-3 py-1.5 text-sm font-bold hover:bg-slate-50"
             >
               Go
             </button>
           </form>
+
           {fixMode && prev && (
             <Link
               to={`/work/${batchId}/rows/${prev}`}
               onClick={() => void flushSave()}
-              className="rounded border border-slate-300 px-2 py-0.5 text-xs font-bold"
+              className="whitespace-nowrap rounded border border-slate-300 px-3 py-1.5 text-sm font-bold hover:bg-slate-50"
             >
-              {fixMode ? 'Prev issue' : 'Prev'}
+              Prev issue
             </Link>
           )}
+
           {fixMode && next && (
             <Link
               to={`/work/${batchId}/rows/${next}`}
               onClick={() => void flushSave()}
-              className="rounded border border-slate-300 px-2 py-0.5 text-xs font-bold"
+              className="whitespace-nowrap rounded border border-slate-300 px-3 py-1.5 text-sm font-bold hover:bg-slate-50"
             >
-              {fixMode ? 'Next issue' : 'Next'}
+              Next issue
             </Link>
           )}
+
           {fixMode && (
-            <span className="text-xs font-bold text-amber-700">
+            <span className="whitespace-nowrap text-sm font-bold text-amber-700">
               {invalidRows.length} to fix
             </span>
           )}
+
           {batch?.universityKey && (
             <button
               type="button"
               onClick={() => setHelpersOpen(true)}
-              className="rounded border border-slate-300 px-2 py-0.5 text-xs font-bold"
+              className="whitespace-nowrap rounded border border-slate-300 px-3 py-1.5 text-sm font-bold hover:bg-slate-50"
             >
               Helpers
             </button>
           )}
+
           {publishReadiness?.canPublish && (
             <button
               type="button"
               disabled={publishing}
               onClick={() => void publishToCatalog()}
-              className="rounded bg-emerald-700 px-2 py-0.5 text-xs font-bold text-white disabled:opacity-50"
+              className="whitespace-nowrap rounded bg-emerald-700 px-3 py-1.5 text-sm font-bold text-white disabled:opacity-50"
             >
               {publishing ? 'Publishing…' : 'Publish catalog'}
             </button>
           )}
+
           {publishReadiness?.status === 'PUBLISHED' && (
-            <span className="text-xs font-bold text-emerald-700">Published</span>
+            <span className="whitespace-nowrap text-sm font-bold text-emerald-700">
+              Published
+            </span>
           )}
-          {!next &&
-            !fixMode &&
-            batch &&
-            idx >= batch.rowCount && (
+
+          {!next && !fixMode && batch && idx >= batch.rowCount && (
             <button
               type="button"
               onClick={exitUniversity}
-              className="rounded border border-emerald-600 px-2 py-0.5 text-xs text-emerald-700"
+              className="whitespace-nowrap rounded border border-emerald-600 px-3 py-1.5 text-sm font-bold text-emerald-700"
             >
               Finish
             </button>
           )}
+
           {courseUrl && (
             <button
               type="button"
-              className="rounded bg-slate-700 px-2 py-0.5 text-xs text-white"
+              className="whitespace-nowrap rounded bg-slate-700 px-3 py-1.5 text-sm font-bold text-white"
               onClick={() => setSplitUrl((v) => !v)}
             >
               {splitUrl ? 'Close URL' : 'URL'}
             </button>
           )}
+
           <span
-            className={`text-xs ${
-              saveState === 'error'
+            className={`whitespace-nowrap text-sm font-medium ${saveState === 'error'
                 ? 'text-red-600'
                 : saveState === 'saved'
                   ? 'text-emerald-600'
                   : 'text-slate-500'
-            }`}
+              }`}
           >
             {saveState === 'saving'
               ? 'Saving…'
@@ -1078,15 +1102,12 @@ export function RowEditorPage() {
         </div>
       )}
 
-      {fieldErrorList.length > 0 && (
-        <div
-          className="shrink-0 border-b border-amber-200 bg-amber-50 px-3 py-1"
-          role="status"
-        >
-          <p className="text-xs font-bold text-amber-950">
-            {fieldErrorList.length} issue
-            {fieldErrorList.length === 1 ? '' : 's'} — hover red fields for
-            details
+      {requiredErrorCount > 0 && (
+        <div className="shrink-0 border-b border-red-200 bg-red-50 px-3 py-1">
+          <p className="text-xs font-bold text-red-800">
+            {requiredErrorCount} required to fix
+            {optionalErrorCount > 0 ? `, ${optionalErrorCount} optional to check` : ''}
+            {' '}— hover highlighted fields for details
           </p>
         </div>
       )}
@@ -1095,323 +1116,320 @@ export function RowEditorPage() {
         <form
           id="row-editor-form"
           onSubmit={(e) => e.preventDefault()}
-          className={`flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 overflow-hidden p-2 ${
-            splitUrl ? 'w-1/2' : 'w-full'
-          }`}
+          className={`flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 overflow-hidden p-2 ${splitUrl ? 'w-1/2' : 'w-full'
+            }`}
         >
           <fieldset
             disabled={catalogPublished}
             className="flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 border-0 p-0 disabled:opacity-90"
           >
-          <section className="shrink-0 space-y-1.5 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
-            {splitUrl ? (
-              <div className="flex flex-col gap-2">
-                <div
-                  className="grid grid-cols-[minmax(0,1fr)_minmax(10rem,38%)] items-start gap-2"
-                >
-                  <div className="min-w-0">{renderIdentitySummary()}</div>
+            <section className="shrink-0 space-y-1.5 rounded-lg border border-slate-200 bg-white p-2 shadow-sm">
+              {splitUrl ? (
+                <div className="flex flex-col gap-2">
                   <div
-                    className="flex min-w-0 flex-col gap-1 rounded border border-amber-200/80 bg-amber-50/35 p-1.5"
+                    className="grid grid-cols-[minmax(0,1fr)_minmax(10rem,38%)] items-start gap-2"
                   >
-                    <p className="text-sm font-bold uppercase tracking-wide text-amber-900/70">
-                      Scholarship
-                    </p>
-                    <Cell
-                      fieldKey="scholarshipName"
-                      fitWidth
-                      boxClassName="max-w-full"
-                    />
-                    <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
-                      <Cell
-                        fieldKey="scholarshipAmount"
-                        fitWidth
-                        inputClassName="tabular-nums"
-                      />
-                      <Cell fieldKey="scholarshipType" fitWidth />
-                    </div>
-                  </div>
-                </div>
-
-                <div
-                  className={`grid items-start gap-2 ${
-                    englishVisible
-                      ? 'grid-cols-2'
-                      : 'grid-cols-1'
-                  }`}
-                >
-                  <div
-                    className="min-w-0 rounded border border-violet-200/80 bg-violet-50/40 p-1.5"
-                  >
-                    <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-violet-800/80">
-                      Academic
-                    </p>
+                    <div className="min-w-0">{renderIdentitySummary()}</div>
                     <div
-                      className="grid grid-cols-[2rem_minmax(4.5rem,1fr)_minmax(3.5rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
+                      className="flex min-w-0 flex-col gap-1 rounded border border-amber-200/80 bg-amber-50/35 p-1.5"
                     >
-                      <span />
-                      <span className="text-sm font-bold text-slate-600">Deg</span>
-                      <span className="text-sm font-bold text-slate-600">GPA</span>
-                      <span className="text-sm font-bold text-slate-600">
-                        Min
-                        <RequiredMark fieldKey="minDegreeName" />
-                      </span>
-                      <MiniInput fieldKey="minDegreeName" />
-                      <MiniInput fieldKey="minGpa" />
-                      <span className="text-sm font-bold text-slate-600">Hi</span>
-                      <MiniInput fieldKey="higherDegreeName" />
-                      <MiniInput fieldKey="higherGpa" />
-                    </div>
-                  </div>
-
-                  {englishVisible && (
-                    <div
-                      className="min-w-0 rounded border border-sky-200/80 bg-sky-50/40 p-1.5"
-                    >
-                      <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-sky-800/80">
-                        English
+                      <p className="text-sm font-bold uppercase tracking-wide text-amber-900/70">
+                        Scholarship
                       </p>
-                      <div
-                        className="grid grid-cols-[2rem_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
-                      >
-                        <span />
-                        {ENGLISH_TESTS.map((test) => {
-                          const show =
-                            hasField(test.overall, draft, row) ||
-                            hasField(test.section, draft, row);
-                          if (!show) return null;
-                          return (
-                            <span
-                              key={`${test.name}-h`}
-                              className="text-center text-sm font-bold text-sky-900/80"
-                            >
-                              {test.name}
-                              <RequiredMark fieldKey={test.overall} />
-                            </span>
-                          );
-                        })}
-                        <span className="text-sm font-bold text-slate-600">Over</span>
-                        {ENGLISH_TESTS.map((test) => {
-                          const show =
-                            hasField(test.overall, draft, row) ||
-                            hasField(test.section, draft, row);
-                          if (!show) return null;
-                          return (
-                            <MiniInput
-                              key={`${test.name}-o`}
-                              fieldKey={test.overall}
-                            />
-                          );
-                        })}
-                        <span className="text-sm font-bold text-slate-600">Min</span>
-                        {ENGLISH_TESTS.map((test) => {
-                          const show =
-                            hasField(test.overall, draft, row) ||
-                            hasField(test.section, draft, row);
-                          if (!show) return null;
-                          return (
-                            <MiniInput
-                              key={`${test.name}-m`}
-                              fieldKey={test.section}
-                            />
-                          );
-                        })}
+                      <Cell
+                        fieldKey="scholarshipName"
+                        fitWidth
+                        boxClassName="max-w-full"
+                      />
+                      <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+                        <Cell
+                          fieldKey="scholarshipAmount"
+                          fitWidth
+                          inputClassName="tabular-nums"
+                        />
+                        <Cell fieldKey="scholarshipType" fitWidth />
                       </div>
                     </div>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <>
-                {renderIdentitySummary()}
-
-                <div className="flex w-full flex-wrap items-start gap-2">
-                  <div
-                    className="rounded border border-violet-200/80 bg-violet-50/40 p-1.5"
-                  >
-                    <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-violet-800/80">
-                      Academic
-                    </p>
-                    <div
-                      className="grid grid-cols-[2rem_minmax(4.5rem,1fr)_minmax(3.5rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
-                    >
-                      <span />
-                      <span className="text-sm font-bold text-slate-600">Deg</span>
-                      <span className="text-sm font-bold text-slate-600">GPA</span>
-                      <span className="text-sm font-bold text-slate-600">
-                        Min
-                        <RequiredMark fieldKey="minDegreeName" />
-                      </span>
-                      <MiniInput fieldKey="minDegreeName" />
-                      <MiniInput fieldKey="minGpa" />
-                      <span className="text-sm font-bold text-slate-600">Hi</span>
-                      <MiniInput fieldKey="higherDegreeName" />
-                      <MiniInput fieldKey="higherGpa" />
-                    </div>
                   </div>
 
-                  {englishVisible && (
+                  <div
+                    className={`grid items-start gap-2 ${englishVisible
+                        ? 'grid-cols-2'
+                        : 'grid-cols-1'
+                      }`}
+                  >
                     <div
-                      className="rounded border border-sky-200/80 bg-sky-50/40 p-1.5"
+                      className="min-w-0 rounded border border-violet-200/80 bg-violet-50/40 p-1.5"
                     >
-                      <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-sky-800/80">
-                        English
+                      <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-violet-800/80">
+                        Academic
                       </p>
                       <div
-                        className="grid grid-cols-[2rem_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
+                        className="grid grid-cols-[2rem_minmax(4.5rem,1fr)_minmax(3.5rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
                       >
                         <span />
-                        {ENGLISH_TESTS.map((test) => {
-                          const show =
-                            hasField(test.overall, draft, row) ||
-                            hasField(test.section, draft, row);
-                          if (!show) return null;
-                          return (
-                            <span
-                              key={`${test.name}-h`}
-                              className="text-center text-sm font-bold text-sky-900/80"
-                            >
-                              {test.name}
-                              <RequiredMark fieldKey={test.overall} />
-                            </span>
-                          );
-                        })}
-                        <span className="text-sm font-bold text-slate-600">Over</span>
-                        {ENGLISH_TESTS.map((test) => {
-                          const show =
-                            hasField(test.overall, draft, row) ||
-                            hasField(test.section, draft, row);
-                          if (!show) return null;
-                          return (
-                            <MiniInput key={`${test.name}-o`} fieldKey={test.overall} />
-                          );
-                        })}
-                        <span className="text-sm font-bold text-slate-600">Min</span>
-                        {ENGLISH_TESTS.map((test) => {
-                          const show =
-                            hasField(test.overall, draft, row) ||
-                            hasField(test.section, draft, row);
-                          if (!show) return null;
-                          return (
-                            <MiniInput key={`${test.name}-m`} fieldKey={test.section} />
-                          );
-                        })}
+                        <span className="text-sm font-bold text-slate-600">Deg</span>
+                        <span className="text-sm font-bold text-slate-600">GPA</span>
+                        <span className="text-sm font-bold text-slate-600">
+                          Min
+                          <RequiredMark fieldKey="minDegreeName" />
+                        </span>
+                        <MiniInput fieldKey="minDegreeName" />
+                        <MiniInput fieldKey="minGpa" />
+                        <span className="text-sm font-bold text-slate-600">Hi</span>
+                        <MiniInput fieldKey="higherDegreeName" />
+                        <MiniInput fieldKey="higherGpa" />
                       </div>
                     </div>
-                  )}
 
-                  <div
-                    className="flex max-w-full flex-col gap-1 rounded border border-amber-200/80 bg-amber-50/35 p-1.5"
-                  >
-                    <p className="text-sm font-bold uppercase tracking-wide text-amber-900/70">
-                      Scholarship
-                    </p>
-                    <Cell fieldKey="scholarshipName" fitWidth boxClassName="max-w-full" />
-                    <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
-                      <Cell
-                        fieldKey="scholarshipAmount"
-                        fitWidth
-                        inputClassName="tabular-nums"
-                      />
-                      <Cell fieldKey="scholarshipType" fitWidth />
-                    </div>
+                    {englishVisible && (
+                      <div
+                        className="min-w-0 rounded border border-sky-200/80 bg-sky-50/40 p-1.5"
+                      >
+                        <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-sky-800/80">
+                          English
+                        </p>
+                        <div
+                          className="grid grid-cols-[2rem_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
+                        >
+                          <span />
+                          {ENGLISH_TESTS.map((test) => {
+                            const show =
+                              hasField(test.overall, draft, row) ||
+                              hasField(test.section, draft, row);
+                            if (!show) return null;
+                            return (
+                              <span
+                                key={`${test.name}-h`}
+                                className="text-center text-sm font-bold text-sky-900/80"
+                              >
+                                {test.name}
+                                <RequiredMark fieldKey={test.overall} />
+                              </span>
+                            );
+                          })}
+                          <span className="text-sm font-bold text-slate-600">Over</span>
+                          {ENGLISH_TESTS.map((test) => {
+                            const show =
+                              hasField(test.overall, draft, row) ||
+                              hasField(test.section, draft, row);
+                            if (!show) return null;
+                            return (
+                              <MiniInput
+                                key={`${test.name}-o`}
+                                fieldKey={test.overall}
+                              />
+                            );
+                          })}
+                          <span className="text-sm font-bold text-slate-600">Min</span>
+                          {ENGLISH_TESTS.map((test) => {
+                            const show =
+                              hasField(test.overall, draft, row) ||
+                              hasField(test.section, draft, row);
+                            if (!show) return null;
+                            return (
+                              <MiniInput
+                                key={`${test.name}-m`}
+                                fieldKey={test.section}
+                              />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
-              </>
-            )}
+              ) : (
+                <>
+                  {renderIdentitySummary()}
 
-            {/* Row 4: Fees — full width, no gap on the right */}
-            <div
-              className="rounded-md border border-emerald-200/70 bg-emerald-50/30 p-1.5"
-            >
-              <p className="mb-1 text-sm font-bold uppercase tracking-wide text-emerald-900/70">
-                Fees
-              </p>
-              <div className="flex w-full flex-wrap items-end gap-x-3 gap-y-2">
-                <Cell
-                  fieldKey="tuitionFee"
-                  fitWidth
-                  inputClassName="tabular-nums"
-                />
-                <Cell fieldKey="currency" fitWidth />
-                <Cell
-                  fieldKey="initialDeposit"
-                  fitWidth
-                  inputClassName="tabular-nums"
-                />
-                <Cell
-                  fieldKey="applicationFee"
-                  fitWidth
-                  inputClassName="tabular-nums"
-                />
-                <Cell
-                  fieldKey="commission"
-                  fitWidth
-                  inputClassName="tabular-nums"
-                />
-                <Cell fieldKey="applicationDeadline" fitWidth />
-              </div>
-            </div>
-          </section>
+                  <div className="flex w-full flex-wrap items-start gap-2">
+                    <div
+                      className="rounded border border-violet-200/80 bg-violet-50/40 p-1.5"
+                    >
+                      <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-violet-800/80">
+                        Academic
+                      </p>
+                      <div
+                        className="grid grid-cols-[2rem_minmax(4.5rem,1fr)_minmax(3.5rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
+                      >
+                        <span />
+                        <span className="text-sm font-bold text-slate-600">Deg</span>
+                        <span className="text-sm font-bold text-slate-600">GPA</span>
+                        <span className="text-sm font-bold text-slate-600">
+                          Min
+                          <RequiredMark fieldKey="minDegreeName" />
+                        </span>
+                        <MiniInput fieldKey="minDegreeName" />
+                        <MiniInput fieldKey="minGpa" />
+                        <span className="text-sm font-bold text-slate-600">Hi</span>
+                        <MiniInput fieldKey="higherDegreeName" />
+                        <MiniInput fieldKey="higherGpa" />
+                      </div>
+                    </div>
 
-          {metaTabs.length > 0 && (
-            <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                    {englishVisible && (
+                      <div
+                        className="rounded border border-sky-200/80 bg-sky-50/40 p-1.5"
+                      >
+                        <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-sky-800/80">
+                          English
+                        </p>
+                        <div
+                          className="grid grid-cols-[2rem_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
+                        >
+                          <span />
+                          {ENGLISH_TESTS.map((test) => {
+                            const show =
+                              hasField(test.overall, draft, row) ||
+                              hasField(test.section, draft, row);
+                            if (!show) return null;
+                            return (
+                              <span
+                                key={`${test.name}-h`}
+                                className="text-center text-sm font-bold text-sky-900/80"
+                              >
+                                {test.name}
+                                <RequiredMark fieldKey={test.overall} />
+                              </span>
+                            );
+                          })}
+                          <span className="text-sm font-bold text-slate-600">Over</span>
+                          {ENGLISH_TESTS.map((test) => {
+                            const show =
+                              hasField(test.overall, draft, row) ||
+                              hasField(test.section, draft, row);
+                            if (!show) return null;
+                            return (
+                              <MiniInput key={`${test.name}-o`} fieldKey={test.overall} />
+                            );
+                          })}
+                          <span className="text-sm font-bold text-slate-600">Min</span>
+                          {ENGLISH_TESTS.map((test) => {
+                            const show =
+                              hasField(test.overall, draft, row) ||
+                              hasField(test.section, draft, row);
+                            if (!show) return null;
+                            return (
+                              <MiniInput key={`${test.name}-m`} fieldKey={test.section} />
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div
+                      className="flex max-w-full flex-col gap-1 rounded border border-amber-200/80 bg-amber-50/35 p-1.5"
+                    >
+                      <p className="text-sm font-bold uppercase tracking-wide text-amber-900/70">
+                        Scholarship
+                      </p>
+                      <Cell fieldKey="scholarshipName" fitWidth boxClassName="max-w-full" />
+                      <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+                        <Cell
+                          fieldKey="scholarshipAmount"
+                          fitWidth
+                          inputClassName="tabular-nums"
+                        />
+                        <Cell fieldKey="scholarshipType" fitWidth />
+                      </div>
+                    </div>
+                  </div>
+                </>
+              )}
+
+              {/* Row 4: Fees — full width, no gap on the right */}
               <div
-                className="flex shrink-0 flex-wrap gap-0.5 border-b border-slate-200 bg-slate-50/80 p-1"
-                role="tablist"
-                aria-label="Metadata"
+                className="rounded-md border border-emerald-200/70 bg-emerald-50/30 p-1.5"
               >
-                {metaTabs.map((tab) => {
-                  const jsonErr =
-                    tab.key !== 'errorReason'
-                      ? getJsonParseError(draft[tab.key] ?? '')
-                      : null;
-                  const serverErr = displayFieldErrors[tab.key];
-                  const hasIssue = Boolean(serverErr || jsonErr);
-                  const selected = activeMetaTab === tab.key;
-                  return (
-                    <button
-                      key={tab.key}
-                      type="button"
-                      role="tab"
-                      aria-selected={selected}
-                      className={`rounded px-2 py-1 text-xs font-bold ${
-                        selected
-                          ? 'bg-white text-slate-900 shadow ring-1 ring-slate-200'
-                          : 'text-slate-600 hover:bg-white/70'
-                      } ${hasIssue ? 'text-red-700' : ''}`}
-                      onClick={() => setActiveMetaTab(tab.key)}
-                    >
-                      {tab.label}
-                      <RequiredMark fieldKey={tab.key} />
-                      {hasIssue ? ' !' : ''}
-                    </button>
-                  );
-                })}
+                <p className="mb-1 text-sm font-bold uppercase tracking-wide text-emerald-900/70">
+                  Fees
+                </p>
+                <div className="flex w-full flex-wrap items-end gap-x-3 gap-y-2">
+                  <Cell
+                    fieldKey="tuitionFee"
+                    fitWidth
+                    inputClassName="tabular-nums"
+                  />
+                  <Cell fieldKey="currency" fitWidth />
+                  <Cell
+                    fieldKey="initialDeposit"
+                    fitWidth
+                    inputClassName="tabular-nums"
+                  />
+                  <Cell
+                    fieldKey="applicationFee"
+                    fitWidth
+                    inputClassName="tabular-nums"
+                  />
+                  <Cell
+                    fieldKey="commission"
+                    fitWidth
+                    inputClassName="tabular-nums"
+                  />
+                  <Cell fieldKey="applicationDeadline" fitWidth />
+                </div>
               </div>
-              <div className="flex min-h-0 flex-1 flex-col p-1" role="tabpanel">
-                {activeMetaTab === 'errorReason' && showError && (
-                  <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-slate-100">
-                    <textarea
-                      className={inputClass(
-                        'errorReason',
-                        'min-h-0 flex-1 resize-none border-0 px-2 py-2 text-sm font-bold',
-                      )}
-                      value={draft.errorReason ?? ''}
-                      onChange={(e) => setField('errorReason', e.target.value)}
-                      onBlur={() => void flushSave()}
-                    />
-                  </section>
-                )}
-                {metaTabs
-                  .filter((t) => t.key !== 'errorReason')
-                  .map((tab) =>
-                    activeMetaTab === tab.key
-                      ? renderMetaPanel(tab.key, tab.title, tab.tint)
-                      : null,
+            </section>
+
+            {metaTabs.length > 0 && (
+              <div className="flex min-h-0 flex-1 flex-col gap-0 overflow-hidden rounded-lg border border-slate-200 bg-white shadow-sm">
+                <div
+                  className="flex shrink-0 flex-wrap gap-0.5 border-b border-slate-200 bg-slate-50/80 p-1"
+                  role="tablist"
+                  aria-label="Metadata"
+                >
+                  {metaTabs.map((tab) => {
+                    const jsonErr =
+                      tab.key !== 'errorReason'
+                        ? getJsonParseError(draft[tab.key] ?? '')
+                        : null;
+                    const serverErr = displayFieldErrors[tab.key];
+                    const hasIssue = Boolean(serverErr || jsonErr);
+                    const selected = activeMetaTab === tab.key;
+                    return (
+                      <button
+                        key={tab.key}
+                        type="button"
+                        role="tab"
+                        aria-selected={selected}
+                        className={`rounded px-2 py-1 text-xs font-bold ${selected
+                            ? 'bg-white text-slate-900 shadow ring-1 ring-slate-200'
+                            : 'text-slate-600 hover:bg-white/70'
+                          } ${hasIssue ? (isCourseRowFieldRequired(tab.key) ? 'text-red-700' : 'text-amber-700') : ''}`}
+                        onClick={() => setActiveMetaTab(tab.key)}
+                      >
+                        {tab.label}
+                        <RequiredMark fieldKey={tab.key} />
+                        {hasIssue ? ' !' : ''}
+                      </button>
+                    );
+                  })}
+                </div>
+                <div className="flex min-h-0 flex-1 flex-col p-1" role="tabpanel">
+                  {activeMetaTab === 'errorReason' && showError && (
+                    <section className="flex min-h-0 flex-1 flex-col overflow-hidden rounded-md border border-slate-100">
+                      <textarea
+                        className={inputClass(
+                          'errorReason',
+                          'min-h-0 flex-1 resize-none border-0 px-2 py-2 text-sm font-bold',
+                        )}
+                        value={draft.errorReason ?? ''}
+                        onChange={(e) => setField('errorReason', e.target.value)}
+                        onBlur={() => void flushSave()}
+                      />
+                    </section>
                   )}
+                  {metaTabs
+                    .filter((t) => t.key !== 'errorReason')
+                    .map((tab) =>
+                      activeMetaTab === tab.key
+                        ? renderMetaPanel(tab.key, tab.title, tab.tint)
+                        : null,
+                    )}
+                </div>
               </div>
-            </div>
-          )}
+            )}
           </fieldset>
         </form>
 

@@ -8,6 +8,39 @@ type RowResponse = {
 /** Columns that are editor-only and should not appear in the exported file. */
 const SKIP_COLUMNS = new Set(['errorReason']);
 
+/** Column order of the exported CSV. Any other column is added after these. */
+const COLUMN_ORDER = [
+  'uniName',
+  'programmeName',
+  'courseName',
+  'degreeName',
+  'minDegreeName',
+  'minGpa',
+  'higherDegreeName',
+  'higherGpa',
+  'intakeInfo',
+  'courseDuration',
+  'currency',
+  'tuitionFee',
+  'initialDeposit',
+  'feesMetaData',
+  'commission',
+  'applicationFee',
+  'applicationDeadline',
+  'courseUrlExternal',
+  'ieltsMinOverall',
+  'ieltsMinSection',
+  'pteMinOverall',
+  'pteMinSection',
+  'toeflMinOverall',
+  'toeflMinSection',
+  'scholarshipName',
+  'scholarshipType',
+  'scholarshipAmount',
+  'scholarshipMetaData',
+  'AcademicRequirementsMetaData',
+] as const;
+
 function csvCell(value: unknown): string {
   const s = String(value ?? '');
   return /[",\r\n]/.test(s) ? `"${s.replace(/"/g, '""')}"` : s;
@@ -51,8 +84,8 @@ export async function exportBatchCsv(
     Array.from({ length: Math.min(6, rowCount) }, () => worker()),
   );
 
-  const headers: string[] = [];
-  const seen = new Set<string>();
+  const headers: string[] = [...COLUMN_ORDER];
+  const seen = new Set<string>(COLUMN_ORDER);
   for (const fields of rows) {
     for (const key of Object.keys(fields ?? {})) {
       if (SKIP_COLUMNS.has(key) || seen.has(key)) continue;

@@ -125,7 +125,7 @@ function validateEnglishField(fieldKey: EnglishField, raw: string): string | nul
   const rule = ENGLISH_SCORE_RULES[fieldKey];
   const n = parseDecimal(raw);
   if (n === null) return 'Must be a number when set';
-  if (n <= 0) return 'Must be greater than 0';
+  if (n < 0) return 'Must be 0 or greater';
   if (n > rule.max) {
     return `Max ${rule.max} for ${rule.testLabel}`;
   }
@@ -171,7 +171,11 @@ export function validateCourseRowScoreAndCompleteness(
 
   const higherDeg = (row.higherDegreeName ?? '').trim();
   const higherGpaRaw = (row.higherGpa ?? '').trim();
-  if (higherDeg && higherGpaRaw) {
+  if (higherDeg && !higherGpaRaw) {
+    errors.higherGpa = 'Required when higher degree is set';
+  } else if (!higherDeg && higherGpaRaw) {
+    errors.higherDegreeName = 'Required when higher GPA is set';
+  } else if (higherDeg && higherGpaRaw) {
     const msg = validateGpaValue(higherGpaRaw, higherDeg);
     if (msg) errors.higherGpa = msg;
   }
@@ -184,12 +188,28 @@ export function validateCourseRowScoreAndCompleteness(
   }
 
   Object.assign(errors, englishPairErrors(row));
+
+  for (const key of ['applicationFee', 'commission'] as const) {
+    const raw = (row[key] ?? '').trim();
+    if (raw && parseDecimal(raw) === null) errors[key] = 'Must be a number when set';
+  }
+
+  const deadline = (row.applicationDeadline ?? '').trim();
+  if (deadline) {
+    const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(deadline);
+    if (!match) {
+      errors.applicationDeadline = 'Must be a date in MM/DD/YYYY format (e.g. 08/31/2026)';
+    } else {
+      const month = Number(match[1]);
+      const day = Number(match[2]);
+      const year = Number(match[3]);
+      const date = new Date(year, month - 1, day);
+      if (date.getFullYear() !== year || date.getMonth() !== month - 1 || date.getDate() !== day) {
+        errors.applicationDeadline = 'Must be a valid date in MM/DD/YYYY format';
+      }
+    }
+  }
   Object.assign(errors, requiredMissingErrors(row));
 
-  // Only required (*) fields can produce an error; every other field is optional.
-  const requiredOnly: Record<string, string> = {};
-  for (const [key, msg] of Object.entries(errors)) {
-    if (REQUIRED_FIELD_SET.has(key)) requiredOnly[key] = msg;
-  }
-  return requiredOnly;
+  return errors;
 }
