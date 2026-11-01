@@ -615,10 +615,10 @@ export function RowEditorPage() {
       <section
         key={key}
         className={`flex min-h-0 flex-1 flex-col overflow-hidden rounded-lg border shadow-sm ${serverErr || jsonErr
-            ? isCourseRowFieldRequired(key)
-              ? 'border-red-200 bg-white'
-              : 'border-amber-200 bg-amber-50'
-            : 'border-slate-200 bg-white'
+          ? isCourseRowFieldRequired(key)
+            ? 'border-red-200 bg-white'
+            : 'border-amber-200 bg-amber-50'
+          : 'border-slate-200 bg-white'
           } ${tint}`}
       >
         <header className="flex shrink-0 items-center justify-between gap-2 border-b border-slate-100 px-2 py-1">
@@ -635,8 +635,8 @@ export function RowEditorPage() {
               >
                 <span
                   className={`cursor-help rounded px-1 py-0.5 text-xs font-bold ${isCourseRowFieldRequired(key)
-                      ? 'bg-red-100 text-red-700'
-                      : 'bg-amber-100 text-amber-800'
+                    ? 'bg-red-100 text-red-700'
+                    : 'bg-amber-100 text-amber-800'
                     }`}
                   tabIndex={0}
                 >
@@ -755,7 +755,14 @@ export function RowEditorPage() {
     if (!hasField(fieldKey, draft, row)) return null;
     const value = draft[fieldKey] ?? '';
     return (
-      <div className="flex min-w-0 items-center gap-1">
+      <div
+        className={`flex min-w-0 items-center gap-1 rounded px-1 ${displayFieldErrors[fieldKey]
+            ? isCourseRowFieldRequired(fieldKey)
+              ? 'bg-red-100'
+              : 'bg-amber-100'
+            : ''
+          }`}
+      >
         <RequiredMark fieldKey={fieldKey} className="shrink-0" />
         <FieldErrorTooltip
           {...fieldTooltipProps(fieldKey)}
@@ -826,7 +833,7 @@ export function RowEditorPage() {
           )}
           {identityLineInput(
             'programmeName',
-            'text-sm font-semibold leading-snug text-slate-700',
+            'text-sm font-bold leading-snug text-slate-900',
           )}
           {identityLineInput(
             'courseName',
@@ -1051,10 +1058,10 @@ export function RowEditorPage() {
 
           <span
             className={`whitespace-nowrap text-sm font-medium ${saveState === 'error'
-                ? 'text-red-600'
-                : saveState === 'saved'
-                  ? 'text-emerald-600'
-                  : 'text-slate-500'
+              ? 'text-red-600'
+              : saveState === 'saved'
+                ? 'text-emerald-600'
+                : 'text-slate-500'
               }`}
           >
             {saveState === 'saving'
@@ -1154,8 +1161,8 @@ export function RowEditorPage() {
 
                   <div
                     className={`grid items-start gap-2 ${englishVisible
-                        ? 'grid-cols-2'
-                        : 'grid-cols-1'
+                      ? 'grid-cols-2'
+                      : 'grid-cols-1'
                       }`}
                   >
                     <div
@@ -1394,8 +1401,8 @@ export function RowEditorPage() {
                         role="tab"
                         aria-selected={selected}
                         className={`rounded px-2 py-1 text-xs font-bold ${selected
-                            ? 'bg-white text-slate-900 shadow ring-1 ring-slate-200'
-                            : 'text-slate-600 hover:bg-white/70'
+                          ? 'bg-white text-slate-900 shadow ring-1 ring-slate-200'
+                          : 'text-slate-600 hover:bg-white/70'
                           } ${hasIssue ? (isCourseRowFieldRequired(tab.key) ? 'text-red-700' : 'text-amber-700') : ''}`}
                         onClick={() => setActiveMetaTab(tab.key)}
                       >
