@@ -3,6 +3,7 @@ import { apiFetch } from './api';
 type RowResponse = {
   rowIndex: number;
   fields: Record<string, string>;
+  isValid: boolean;
 };
 
 /** Columns that are editor-only and should not appear in the exported file. */
@@ -51,7 +52,7 @@ function safeFileName(name: string): string {
 }
 
 /**
- * Loads every row of a batch and downloads them as one CSV file.
+ * Loads every row of a batch and downloads only the VALID rows as one CSV file.
  * Rows are fetched a few at a time so large universities stay quick.
  */
 export async function exportBatchCsv(
@@ -59,11 +60,11 @@ export async function exportBatchCsv(
   rowCount: number,
   universityName: string,
   onProgress?: (done: number, total: number) => void,
-  fileSuffix = 'fixed',
+  fileSuffix = 'valid',
 ): Promise<void> {
   if (rowCount <= 0) throw new Error('No courses to export');
 
-  const rows: Record<string, string>[] = new Array(rowCount);
+  const rows: (Record<string, string> | null)[] = new Array(rowCount);
   let nextIndex = 1;
   let done = 0;
 
@@ -74,7 +75,7 @@ export async function exportBatchCsv(
       const r = await apiFetch<RowResponse>(
         `/data-entry/batches/${batchId}/rows/${i}`,
       );
-      rows[i - 1] = r.fields;
+      rows[i - 1] = r.isValid ? r.fields : null;
       done++;
       onProgress?.(done, rowCount);
     }
@@ -84,10 +85,13 @@ export async function exportBatchCsv(
     Array.from({ length: Math.min(6, rowCount) }, () => worker()),
   );
 
+  const validRows = rows.filter((r): r is Record<string, string> => r !== null);
+  if (validRows.length === 0) throw new Error('No valid courses to export');
+
   const headers: string[] = [...COLUMN_ORDER];
   const seen = new Set<string>(COLUMN_ORDER);
-  for (const fields of rows) {
-    for (const key of Object.keys(fields ?? {})) {
+  for (const fields of validRows) {
+    for (const key of Object.keys(fields)) {
       if (SKIP_COLUMNS.has(key) || seen.has(key)) continue;
       seen.add(key);
       headers.push(key);
@@ -95,8 +99,8 @@ export async function exportBatchCsv(
   }
 
   const lines = [headers.map(csvCell).join(',')];
-  for (const fields of rows) {
-    lines.push(headers.map((h) => csvCell(fields?.[h] ?? '')).join(','));
+  for (const fields of validRows) {
+    lines.push(headers.map((h) => csvCell(fields[h] ?? '')).join(','));
   }
 
   // BOM so Excel opens UTF-8 correctly.

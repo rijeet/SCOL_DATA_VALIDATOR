@@ -13,14 +13,6 @@ import { exportBatchCsv } from '../lib/exportBatchCsv';
 import { resolveInitialRowIndex } from '../lib/initialWorkRow';
 import { clearWorkSession, setWorkSession } from '../lib/workSession';
 
-/**
- * Export before every course is valid (for testing).
- * On in Vite development mode (`npm run dev`), or when VITE_ALLOW_UNVALIDATED_EXPORT=true.
- */
-const ALLOW_UNVALIDATED_EXPORT =
-  import.meta.env.DEV ||
-  import.meta.env.VITE_ALLOW_UNVALIDATED_EXPORT === 'true';
-
 type StagingSummary = {
   batchId: string;
   rowCount: number;
@@ -174,7 +166,7 @@ export function UniversitiesPage() {
         staging.rowCount,
         uni.uniName,
         (done, total) => setExportProgress(`${done}/${total}`),
-        staging.invalidRowCount > 0 ? 'unvalidated' : 'fixed',
+        'valid',
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Export failed');
@@ -342,31 +334,19 @@ export function UniversitiesPage() {
                 {staging ? (
                   <button
                     type="button"
-                    disabled={
-                      busy ||
-                      staging.rowCount === 0 ||
-                      (staging.invalidRowCount > 0 && !ALLOW_UNVALIDATED_EXPORT)
-                    }
+                    disabled={busy}
                     onClick={() => void exportCourses(u)}
                     className={`inline-flex items-center gap-1.5 rounded border px-3 py-2 text-sm font-bold text-white disabled:opacity-40 ${
                       staging.invalidRowCount > 0
                         ? 'border-amber-600 bg-amber-600'
                         : 'border-emerald-600 bg-emerald-600'
                     }`}
-                    title={
-                      staging.invalidRowCount > 0
-                        ? ALLOW_UNVALIDATED_EXPORT
-                          ? `Testing export: ${staging.invalidRowCount} course(s) are still invalid`
-                          : `Fix ${staging.invalidRowCount} course(s) before exporting`
-                        : 'Download all courses as CSV'
-                    }
+                    title="Download valid courses as CSV"
                   >
                     <Download className="h-4 w-4" aria-hidden />
                     {busy && busyAction === 'export'
                       ? `Exporting ${exportProgress}`.trim()
-                      : staging.invalidRowCount > 0
-                        ? 'Export CSV (test)'
-                        : 'Export CSV'}
+                      : 'Export CSV'}
                   </button>
                 ) : null}
                 {!staging && (
