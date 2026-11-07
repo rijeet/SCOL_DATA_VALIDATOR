@@ -1,5 +1,5 @@
 /**
- * Upload every university under reference/uk-uni (or ./UK UNI) to Cloudinary (SCOL_DATA/{uni}/...).
+ * Upload universities under reference/uk-uni (or ./UK UNI) to Cloudinary (SCOL_DATA/{uni}/...).
  *
  * Uses Cloudinary `folder` + nested `public_id` so assets live under SCOL_DATA,
  * creates folder records via Admin API, and uploads a root marker file.
@@ -11,6 +11,10 @@
  * Usage:
  *   node -r ./load-env.js scripts/upload-uk-uni-to-cloudinary.mjs
  *   node -r ./load-env.js scripts/upload-uk-uni-to-cloudinary.mjs --dry-run
+ *   node -r ./load-env.js scripts/upload-uk-uni-to-cloudinary.mjs --uni="Aston University"
+ *   node -r ./load-env.js scripts/upload-uk-uni-to-cloudinary.mjs --uni="Aston University" --dry-run
+ *   node -r ./load-env.js scripts/upload-uk-uni-to-cloudinary.mjs --uni="Aston University" --csv-only
+ *     (--csv-only uploads just the *_reviewed.csv and skips the four helper .md files)
  */
 import fs from 'fs';
 import path from 'path';
@@ -41,6 +45,20 @@ const HELPER_REL_PATHS = [
 ];
 
 const dryRun = process.argv.includes('--dry-run');
+const csvOnly = process.argv.includes('--csv-only');
+
+/** Supports both --uni="Aston University" and --uni "Aston University". */
+function getOnlyUni() {
+  const args = process.argv.slice(2);
+  for (let i = 0; i < args.length; i++) {
+    const a = args[i];
+    if (a.startsWith('--uni=')) return a.slice('--uni='.length).trim();
+    if (a === '--uni') return (args[i + 1] ?? '').trim();
+  }
+  return undefined;
+}
+
+const onlyUni = getOnlyUni();
 
 function configureCloudinary() {
   const cloudName = process.env.CLOUDINARY_CLOUD_NAME;
@@ -176,6 +194,8 @@ async function uploadUniversity(uniName) {
     await uploadFile(path.join(uniDir, csvName), uniName, csvName);
   }
 
+  if (csvOnly) return;
+
   for (const rel of HELPER_REL_PATHS) {
     const local = path.join(uniDir, rel);
     if (!fs.existsSync(local)) {
@@ -196,14 +216,27 @@ async function main() {
   configureCloudinary();
   await ensureScolDataRoot();
 
-  const universities = fs
+  const allUniversities = fs
     .readdirSync(ukUniRoot, { withFileTypes: true })
     .filter((d) => d.isDirectory())
     .map((d) => d.name)
     .sort((a, b) => a.localeCompare(b));
 
+  const universities = onlyUni
+    ? allUniversities.filter((name) => name === onlyUni)
+    : allUniversities;
+
+  if (onlyUni && universities.length === 0) {
+    throw new Error(
+      `No university folder named "${onlyUni}" under ${ukUniRoot}.\n` +
+        `Available:\n  ${allUniversities.join('\n  ')}`,
+    );
+  }
+
   console.log(
-    `${dryRun ? '[dry-run] ' : ''}Uploading ${universities.length} universities → Cloudinary folder "${ROOT_FOLDER}/"`,
+    `${dryRun ? '[dry-run] ' : ''}${csvOnly ? '[csv-only] ' : ''}Uploading ${universities.length} universit${
+      universities.length === 1 ? 'y' : 'ies'
+    } → Cloudinary folder "${ROOT_FOLDER}/"`,
   );
 
   let ok = 0;
