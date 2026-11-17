@@ -1,11 +1,8 @@
 import { useEffect, useState } from 'react';
 import type { FormEvent } from 'react';
+import { Eye, EyeOff } from 'lucide-react';
 import { useLocation, useNavigate } from 'react-router-dom';
 import { apiFetch, ensureAuth, getAccessToken, setAuthTokens } from '../lib/api';
-import {
-  getWorkSession,
-  workSessionPath,
-} from '../lib/workSession';
 
 type AuthResponse = {
   accessToken: string;
@@ -17,6 +14,7 @@ export function LoginPage() {
   const location = useLocation();
   const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(true);
@@ -27,12 +25,7 @@ export function LoginPage() {
       const ok = await ensureAuth();
       if (cancelled) return;
       if (ok || getAccessToken()) {
-        const session = getWorkSession();
-        if (session) {
-          navigate(workSessionPath(session), { replace: true });
-        } else {
-          navigate('/universities', { replace: true });
-        }
+        navigate('/dashboard', { replace: true });
         return;
       }
       setChecking(false);
@@ -57,13 +50,7 @@ export function LoginPage() {
         navigate(from, { replace: true });
         return;
       }
-
-      const session = getWorkSession();
-      if (session) {
-        navigate(workSessionPath(session), { replace: true });
-      } else {
-        navigate('/universities', { replace: true });
-      }
+      navigate('/dashboard', { replace: true });
     } catch (err) {
       setError(err instanceof Error ? err.message : 'Login failed');
     } finally {
@@ -105,15 +92,29 @@ export function LoginPage() {
         </label>
         <label className="block text-sm">
           Password
-          <input
-            type="password"
-            autoComplete="current-password"
-            placeholder="Password"
-            className="mt-1 w-full rounded border border-slate-300 px-3 py-2 placeholder:text-slate-400"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            required
-          />
+          <span className="relative mt-1 block">
+            <input
+              type={showPassword ? 'text' : 'password'}
+              autoComplete="current-password"
+              placeholder="Password"
+              className="w-full rounded border border-slate-300 py-2 pl-3 pr-10 placeholder:text-slate-400"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              required
+            />
+            <button
+              type="button"
+              onClick={() => setShowPassword((v) => !v)}
+              className="absolute inset-y-0 right-0 flex items-center px-3 text-slate-500 hover:text-slate-800"
+              aria-label={showPassword ? 'Hide password' : 'Show password'}
+            >
+              {showPassword ? (
+                <EyeOff className="h-4 w-4" aria-hidden />
+              ) : (
+                <Eye className="h-4 w-4" aria-hidden />
+              )}
+            </button>
+          </span>
         </label>
         {error && <p className="text-sm text-red-600">{error}</p>}
         <button
