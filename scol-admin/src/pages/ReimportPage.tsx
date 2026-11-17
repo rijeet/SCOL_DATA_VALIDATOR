@@ -7,7 +7,7 @@ import { resolveInitialRowIndex } from '../lib/initialWorkRow';
 import { clearWorkSession, setWorkSession } from '../lib/workSession';
 
 /** Route of the university list page (back link). Change if your route differs. */
-const UNIVERSITIES_PATH = '/universities';
+const UNIVERSITIES_PATH = '/destinations';
 
 type StagingSummary = {
   batchId: string;

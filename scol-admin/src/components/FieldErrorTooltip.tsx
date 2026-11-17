@@ -7,6 +7,7 @@ type Props = {
   message?: string;
   jsonError?: string | null;
   className?: string;
+  required?: boolean;
   children: ReactNode;
 };
 
@@ -16,6 +17,7 @@ export function FieldErrorTooltip({
   message,
   jsonError,
   className = '',
+  required: requiredProp,
   children,
 }: Props) {
   const primary = message?.trim() || (jsonError ? `JSON: ${jsonError}` : '');
@@ -23,7 +25,7 @@ export function FieldErrorTooltip({
     return <>{children}</>;
   }
   const hint = hintForField(fieldKey);
-  const required = isCourseRowFieldRequired(fieldKey);
+  const required = requiredProp ?? isCourseRowFieldRequired(fieldKey);
   const tone = required
     ? { border: 'border-red-200', text: 'text-red-700', hintBorder: 'border-amber-100' }
     : { border: 'border-amber-200', text: 'text-amber-800', hintBorder: 'border-amber-100' };

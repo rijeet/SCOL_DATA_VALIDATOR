@@ -133,3 +133,72 @@ export async function apiFetch<T>(
   }
   return unwrapEnvelope<T>(JSON.parse(text));
 }
+
+function filenameFromDisposition(
+  header: string | null,
+  fallback: string,
+): string {
+  if (!header) return fallback;
+  const utf8 = /filename\*=UTF-8''([^;]+)/i.exec(header);
+  if (utf8?.[1]) {
+    try {
+      return decodeURIComponent(utf8[1]);
+    } catch {
+      /* keep looking */
+    }
+  }
+  const quoted = /filename="([^"]+)"/i.exec(header);
+  if (quoted?.[1]) return quoted[1];
+  const plain = /filename=([^;]+)/i.exec(header);
+  if (plain?.[1]) return plain[1].trim();
+  return fallback;
+}
+
+function triggerBlobDownload(blob: Blob, filename: string): void {
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url;
+  a.download = filename;
+  document.body.appendChild(a);
+  a.click();
+  a.remove();
+  URL.revokeObjectURL(url);
+}
+
+/** Authenticated file download. Does not JSON.parse the body. */
+export async function apiDownload(
+  path: string,
+  fallbackName: string,
+  retried = false,
+): Promise<void> {
+  const headers = new Headers();
+  const token = getAccessToken();
+  if (token) {
+    headers.set('Authorization', `Bearer ${token}`);
+  }
+
+  const res = await fetch(`${API_BASE}${path}`, { headers });
+
+  if (res.status === 401 && !retried) {
+    const newToken = await refreshAccessToken();
+    if (newToken) {
+      return apiDownload(path, fallbackName, true);
+    }
+    if (typeof window !== 'undefined') {
+      setReturnUrl(window.location.pathname + window.location.search);
+    }
+    clearAuthTokens();
+  }
+
+  if (!res.ok) {
+    const text = await res.text();
+    throw new Error(formatApiError(text, res.status));
+  }
+
+  const blob = await res.blob();
+  const filename = filenameFromDisposition(
+    res.headers.get('Content-Disposition'),
+    fallbackName,
+  );
+  triggerBlobDownload(blob, filename);
+}

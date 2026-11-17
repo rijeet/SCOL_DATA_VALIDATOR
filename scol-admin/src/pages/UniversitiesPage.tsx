@@ -56,7 +56,6 @@ export function UniversitiesPage() {
   const [busyAction, setBusyAction] = useState<
     'import' | 'continue' | 'sync' | 'export' | null
   >(null);
-  const [exportProgress, setExportProgress] = useState('');
 
   useEffect(() => {
     let cancelled = false;
@@ -158,22 +157,14 @@ export function UniversitiesPage() {
     if (!staging) return;
     setBusyId(uni.sysUniversityId);
     setBusyAction('export');
-    setExportProgress('');
     setError(null);
     try {
-      await exportBatchCsv(
-        staging.batchId,
-        staging.rowCount,
-        uni.uniName,
-        (done, total) => setExportProgress(`${done}/${total}`),
-        'valid',
-      );
+      await exportBatchCsv(staging.batchId, uni.uniName);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Export failed');
     } finally {
       setBusyId(null);
       setBusyAction(null);
-      setExportProgress('');
     }
   }
 
@@ -345,7 +336,7 @@ export function UniversitiesPage() {
                   >
                     <Download className="h-4 w-4" aria-hidden />
                     {busy && busyAction === 'export'
-                      ? `Exporting ${exportProgress}`.trim()
+                      ? 'Downloading…'
                       : 'Export CSV'}
                   </button>
                 ) : null}

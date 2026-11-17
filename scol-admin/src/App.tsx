@@ -2,14 +2,14 @@ import type { ReactNode } from 'react';
 import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ensureAuth, getAccessToken } from './lib/api';
-import {
-  getWorkSession,
-  workSessionPath,
-} from './lib/workSession';
 import { LoginPage } from './pages/LoginPage';
 import { ReimportPage } from './pages/ReimportPage';
-import { RowEditorPage } from './pages/RowEditorPage';
+import { WorkGate } from './pages/WorkGate';
 import { UniversitiesPage } from './pages/UniversitiesPage';
+import { DestinationsPage } from './pages/DestinationsPage';
+import { CountryPage } from './pages/CountryPage';
+import { ImportCsvPage } from './pages/ImportCsvPage';
+import { DashboardPage } from './pages/DashboardPage';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
@@ -44,33 +44,56 @@ function RequireAuth({ children }: { children: ReactNode }) {
 }
 
 function RootRedirect() {
-  const session = getWorkSession();
-  if (getAccessToken() && session) {
-    return <Navigate to={workSessionPath(session)} replace />;
-  }
   if (getAccessToken()) {
-    return <Navigate to="/universities" replace />;
+    return <Navigate to="/dashboard" replace />;
   }
   return <Navigate to="/login" replace />;
-}
-
-function UniversitiesGate() {
-  const session = getWorkSession();
-  if (session) {
-    return <Navigate to={workSessionPath(session)} replace />;
-  }
-  return (
-    <RequireAuth>
-      <UniversitiesPage />
-    </RequireAuth>
-  );
 }
 
 export default function App() {
   return (
     <Routes>
       <Route path="/login" element={<LoginPage />} />
-      <Route path="/universities" element={<UniversitiesGate />} />
+      <Route
+        path="/dashboard"
+        element={
+          <RequireAuth>
+            <DashboardPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/destinations"
+        element={
+          <RequireAuth>
+            <DestinationsPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/destinations/:countryId"
+        element={
+          <RequireAuth>
+            <CountryPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/destinations/:countryId/import"
+        element={
+          <RequireAuth>
+            <ImportCsvPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/universities"
+        element={
+          <RequireAuth>
+            <UniversitiesPage />
+          </RequireAuth>
+        }
+      />
       <Route
         path="/reimport"
         element={
@@ -83,7 +106,7 @@ export default function App() {
         path="/work/:batchId/rows/:rowIndex"
         element={
           <RequireAuth>
-            <RowEditorPage />
+            <WorkGate />
           </RequireAuth>
         }
       />

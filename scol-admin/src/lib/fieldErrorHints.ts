@@ -26,6 +26,17 @@ export const FIELD_FORMAT_HINTS: Record<string, string> = {
   applicationDeadline: 'e.g. 08-31-2026 — empty shows as Missing',
   courseDuration: 'Months as a number, e.g. 12 — empty shows as Missing',
   courseUrlExternal: 'Full course URL — empty shows as Missing',
+  logoUrl:
+    'Choose logo to upload, or paste a full http(s) URL',
+  coverImageUrl:
+    'Choose cover photo to upload, or paste a full http(s) URL',
+  website: 'Full website URL starting with http:// or https://',
+  campusLifeLinks:
+    'Quoted YouTube/video URLs, e.g. "https://youtu.be/abc", "https://youtu.be/def". No commas inside a URL.',
+  locationMapMetaData:
+    'Google Maps URL, or JSON like {"href":"https://maps.google.com/...","text":"Map"}',
+  rankingMetaData:
+    'Pretty JSON array: [{"subtitle":"Ranking","description":["…"]}]. Click Format JSON after fixing syntax.',
 };
 
 export function hintForField(fieldKey: string): string | undefined {

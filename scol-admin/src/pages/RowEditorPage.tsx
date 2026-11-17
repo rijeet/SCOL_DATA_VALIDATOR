@@ -1,10 +1,12 @@
 import { ChevronLeft, ChevronRight } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
+import { ConfirmDialog } from '../components/ConfirmDialog';
 import { FieldErrorTooltip } from '../components/FieldErrorTooltip';
 import { LoadingSplash } from '../components/LoadingSplash';
-import { UniversityHelpersPanel } from '../components/UniversityHelpersPanel';
+import { AcademicReqPanel } from '../components/AcademicReqPanel';
 import { CourseUrlReferencePanel } from '../components/CourseUrlReferencePanel';
+import { UniversityHelpersPanel } from '../components/UniversityHelpersPanel';
 import { apiFetch } from '../lib/api';
 import {
   adjacentInvalidIndex,
@@ -40,12 +42,14 @@ type BatchResponse = {
   universityKey: string;
   invalidRowCount: number;
   status?: string;
+  sysCountryId?: string | null;
 };
 
 type PublishReadiness = {
   canPublish: boolean;
   status: string;
   publishedAt: string | null;
+  rowCount: number;
   invalidRowCount: number;
   allRowsValid: boolean;
 };
@@ -156,9 +160,12 @@ export function RowEditorPage() {
   const [publishReadiness, setPublishReadiness] =
     useState<PublishReadiness | null>(null);
   const [publishing, setPublishing] = useState(false);
+  const [confirmPublish, setConfirmPublish] = useState(false);
+  const [publishError, setPublishError] = useState<string | null>(null);
   const [publishNotice, setPublishNotice] = useState<PublishResult | null>(null);
   const [invalidRows, setInvalidRows] = useState<number[]>([]);
   const [helpersOpen, setHelpersOpen] = useState(false);
+  const [academicReqOpen, setAcademicReqOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [jumpRowInput, setJumpRowInput] = useState('');
   const [activeMetaTab, setActiveMetaTab] = useState('');
@@ -274,15 +281,9 @@ export function RowEditorPage() {
 
   async function publishToCatalog() {
     if (!batchId || !publishReadiness?.canPublish) return;
-    if (
-      !window.confirm(
-        'Publish all validated courses to the live catalog? This replaces existing courses for this university.',
-      )
-    ) {
-      return;
-    }
     setPublishing(true);
     setPublishNotice(null);
+    setPublishError(null);
     try {
       const result = await apiFetch<PublishResult>(
         `/data-entry/batches/${batchId}/publish`,
@@ -292,8 +293,9 @@ export function RowEditorPage() {
       await refreshPublishReadiness();
       const b = await apiFetch<BatchResponse>(`/data-entry/batches/${batchId}`);
       setBatch(b);
+      setConfirmPublish(false);
     } catch (e) {
-      window.alert(e instanceof Error ? e.message : 'Publish failed');
+      setPublishError(e instanceof Error ? e.message : 'Publish failed');
     } finally {
       setPublishing(false);
     }
@@ -303,7 +305,7 @@ export function RowEditorPage() {
     load().catch((err) => {
       console.error(err);
       clearWorkSession();
-      navigate('/universities', { replace: true });
+      navigate('/destinations', { replace: true });
     });
   }, [load, navigate]);
 
@@ -473,7 +475,11 @@ export function RowEditorPage() {
   function exitUniversity() {
     void flushSave().finally(() => {
       clearWorkSession();
-      navigate('/universities');
+      navigate(
+        batch?.sysCountryId
+          ? `/destinations/${batch.sysCountryId}`
+          : '/dashboard',
+      );
     });
   }
 
@@ -514,11 +520,15 @@ export function RowEditorPage() {
       return <span aria-hidden className="block h-7" />;
     }
     return (
-      <FieldErrorTooltip {...fieldTooltipProps(fieldKey)} className="min-w-0">
+      <FieldErrorTooltip
+        {...fieldTooltipProps(fieldKey)}
+        className="min-w-0 w-full"
+      >
         <input
           className={inputClass(
             fieldKey,
-            `h-8 w-full min-w-[2.75rem] px-1 text-center text-sm font-bold tabular-nums ${className}`,
+            `h-8 w-full min-w-0 px-1 text-center text-sm font-bold tabular-nums ${className}`,
+            'full',
           )}
           value={draft[fieldKey] ?? ''}
           onChange={(e) => setField(fieldKey, e.target.value)}
@@ -754,16 +764,20 @@ export function RowEditorPage() {
   function identityLineInput(fieldKey: string, textClass: string) {
     if (!hasField(fieldKey, draft, row)) return null;
     const value = draft[fieldKey] ?? '';
+    const label = LABELS[fieldKey] ?? fieldKey;
     return (
       <div
-        className={`flex min-w-0 items-center gap-1 rounded px-1 ${displayFieldErrors[fieldKey]
+        className={`flex min-w-0 flex-col gap-0 rounded px-1 ${displayFieldErrors[fieldKey]
             ? isCourseRowFieldRequired(fieldKey)
               ? 'bg-red-100'
               : 'bg-amber-100'
             : ''
           }`}
       >
-        <RequiredMark fieldKey={fieldKey} className="shrink-0" />
+        <span className="text-[10px] font-bold uppercase tracking-wide text-slate-500">
+          {label}
+          <RequiredMark fieldKey={fieldKey} />
+        </span>
         <FieldErrorTooltip
           {...fieldTooltipProps(fieldKey)}
           className="block min-w-0 flex-1"
@@ -777,8 +791,7 @@ export function RowEditorPage() {
             onChange={(e) => setField(fieldKey, e.target.value)}
             onBlur={() => void flushSave()}
             placeholder={IDENTITY_PLACEHOLDERS[fieldKey]}
-            aria-label={LABELS[fieldKey] ?? fieldKey}
-            aria-invalid={Boolean(displayFieldErrors[fieldKey])}
+            aria-label={label}
           />
         </FieldErrorTooltip>
       </div>
@@ -839,13 +852,19 @@ export function RowEditorPage() {
             'courseName',
             'text-sm font-bold leading-snug text-slate-800',
           )}
-          <div
-            className="mt-1.5 grid grid-cols-[minmax(3.5rem,1fr)_minmax(0,1.6fr)_minmax(3.5rem,0.9fr)] gap-x-2 gap-y-1 border-t border-slate-200/80 pt-1.5"
-          >
-            {identityMiniField('degreeName')}
-            {identityMiniField('intakeInfo')}
-            {identityMiniField('courseDuration')}
-          </div>
+          {splitUrl ? (
+            <div className="mt-1.5 grid grid-cols-2 gap-x-2 gap-y-1 border-t border-slate-200/80 pt-1.5">
+              {identityMiniField('degreeName')}
+              {identityMiniField('courseDuration')}
+              {identityMiniField('intakeInfo', 'col-span-2')}
+            </div>
+          ) : (
+            <div className="mt-1.5 grid grid-cols-[minmax(3.5rem,1fr)_minmax(0,1.6fr)_minmax(3.5rem,0.9fr)] gap-x-2 gap-y-1 border-t border-slate-200/80 pt-1.5">
+              {identityMiniField('degreeName')}
+              {identityMiniField('intakeInfo')}
+              {identityMiniField('courseDuration')}
+            </div>
+          )}
         </div>
         {showCourseUrlField && (
           <Cell
@@ -880,9 +899,8 @@ export function RowEditorPage() {
             onClick={exitUniversity}
             className="text-sm font-medium text-slate-600 hover:text-slate-900"
           >
-            ← Exit university
+            ← Exit batch
           </button>
-
           <p className="truncate text-lg font-bold text-slate-900">
             {batch?.universityKey}
             <span className="font-medium text-slate-600">
@@ -894,9 +912,7 @@ export function RowEditorPage() {
             {row && (
               <span
                 className={
-                  row.isValid
-                    ? 'ml-2 text-emerald-600'
-                    : 'ml-2 text-amber-600'
+                  row.isValid ? 'ml-2 text-emerald-600' : 'ml-2 text-red-700'
                 }
               >
                 {row.isValid ? 'Valid' : 'Errors'}
@@ -1009,7 +1025,16 @@ export function RowEditorPage() {
             </span>
           )}
 
-          {batch?.universityKey && (
+          {batchId && (
+            <button
+              type="button"
+              onClick={() => setAcademicReqOpen(true)}
+              className="whitespace-nowrap rounded border border-slate-300 px-3 py-1.5 text-sm font-bold hover:bg-slate-50"
+            >
+              Academic Req
+            </button>
+          )}
+          {batch?.universityKey && !batch.sysCountryId && (
             <button
               type="button"
               onClick={() => setHelpersOpen(true)}
@@ -1023,10 +1048,17 @@ export function RowEditorPage() {
             <button
               type="button"
               disabled={publishing}
-              onClick={() => void publishToCatalog()}
+              onClick={() => {
+                setPublishError(null);
+                setConfirmPublish(true);
+              }}
               className="whitespace-nowrap rounded bg-emerald-700 px-3 py-1.5 text-sm font-bold text-white disabled:opacity-50"
             >
-              {publishing ? 'Publishing…' : 'Publish catalog'}
+              {publishing
+                ? 'Publishing…'
+                : (publishReadiness.invalidRowCount ?? 0) > 0
+                  ? 'Publish valid'
+                  : 'Publish catalog'}
             </button>
           )}
 
@@ -1052,7 +1084,7 @@ export function RowEditorPage() {
               className="whitespace-nowrap rounded bg-slate-700 px-3 py-1.5 text-sm font-bold text-white"
               onClick={() => setSplitUrl((v) => !v)}
             >
-              {splitUrl ? 'Close URL' : 'URL'}
+              {splitUrl ? 'Close URL' : 'Course URL'}
             </button>
           )}
 
@@ -1123,8 +1155,7 @@ export function RowEditorPage() {
         <form
           id="row-editor-form"
           onSubmit={(e) => e.preventDefault()}
-          className={`flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 overflow-hidden p-2 ${splitUrl ? 'w-1/2' : 'w-full'
-            }`}
+          className={`flex min-h-0 min-w-0 flex-1 flex-col gap-1.5 overflow-hidden p-2 ${splitUrl ? 'w-1/2' : 'w-full'}`}
         >
           <fieldset
             disabled={catalogPublished}
@@ -1159,20 +1190,15 @@ export function RowEditorPage() {
                     </div>
                   </div>
 
-                  <div
-                    className={`grid items-start gap-2 ${englishVisible
-                      ? 'grid-cols-2'
-                      : 'grid-cols-1'
-                      }`}
-                  >
+                  <div className="flex w-full flex-nowrap items-stretch gap-2">
                     <div
-                      className="min-w-0 rounded border border-violet-200/80 bg-violet-50/40 p-1.5"
+                      className="flex min-w-0 flex-1 flex-col rounded border border-violet-200/80 bg-violet-50/40 p-1.5"
                     >
                       <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-violet-800/80">
                         Academic
                       </p>
                       <div
-                        className="grid grid-cols-[2rem_minmax(4.5rem,1fr)_minmax(3.5rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
+                        className="grid w-full grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1.5 gap-y-0.5"
                       >
                         <span />
                         <span className="text-sm font-bold text-slate-600">Deg</span>
@@ -1183,7 +1209,7 @@ export function RowEditorPage() {
                         </span>
                         <MiniInput fieldKey="minDegreeName" />
                         <MiniInput fieldKey="minGpa" />
-                        <span className="text-sm font-bold text-slate-600">Hi</span>
+                        <span className="text-sm font-bold text-slate-600">High</span>
                         <MiniInput fieldKey="higherDegreeName" />
                         <MiniInput fieldKey="higherGpa" />
                       </div>
@@ -1191,13 +1217,13 @@ export function RowEditorPage() {
 
                     {englishVisible && (
                       <div
-                        className="min-w-0 rounded border border-sky-200/80 bg-sky-50/40 p-1.5"
+                        className="flex min-w-0 flex-1 flex-col rounded border border-sky-200/80 bg-sky-50/40 p-1.5"
                       >
                         <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-sky-800/80">
                           English
                         </p>
                         <div
-                          className="grid grid-cols-[2rem_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
+                          className="grid w-full grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1.5 gap-y-0.5"
                         >
                           <span />
                           {ENGLISH_TESTS.map((test) => {
@@ -1244,21 +1270,57 @@ export function RowEditorPage() {
                         </div>
                       </div>
                     )}
+
+                    <div
+                      className="flex min-w-0 flex-1 flex-col rounded-md border border-emerald-200/70 bg-emerald-50/30 p-1.5"
+                    >
+                      <p className="mb-1 text-sm font-bold uppercase tracking-wide text-emerald-900/70">
+                        Fees
+                      </p>
+                      <div className="grid w-full grid-cols-3 items-end gap-x-2 gap-y-1">
+                        <Cell
+                          fieldKey="tuitionFee"
+                          boxClassName="min-w-0"
+                          inputClassName="tabular-nums"
+                        />
+                        <Cell fieldKey="currency" boxClassName="min-w-0" />
+                        <Cell
+                          fieldKey="initialDeposit"
+                          boxClassName="min-w-0"
+                          inputClassName="tabular-nums"
+                        />
+                        <Cell
+                          fieldKey="applicationFee"
+                          label="App. Fee"
+                          boxClassName="min-w-0"
+                          inputClassName="tabular-nums"
+                        />
+                        <Cell
+                          fieldKey="commission"
+                          boxClassName="min-w-0"
+                          inputClassName="tabular-nums"
+                        />
+                        <Cell
+                          fieldKey="applicationDeadline"
+                          boxClassName="min-w-0"
+                        />
+                      </div>
+                    </div>
                   </div>
                 </div>
               ) : (
                 <>
                   {renderIdentitySummary()}
 
-                  <div className="flex w-full flex-wrap items-start gap-2">
+                  <div className="flex w-full flex-nowrap items-stretch gap-2">
                     <div
-                      className="rounded border border-violet-200/80 bg-violet-50/40 p-1.5"
+                      className="flex min-w-0 flex-1 flex-col rounded border border-violet-200/80 bg-violet-50/40 p-1.5"
                     >
                       <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-violet-800/80">
                         Academic
                       </p>
                       <div
-                        className="grid grid-cols-[2rem_minmax(4.5rem,1fr)_minmax(3.5rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
+                        className="grid w-full grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1.5 gap-y-0.5"
                       >
                         <span />
                         <span className="text-sm font-bold text-slate-600">Deg</span>
@@ -1269,7 +1331,7 @@ export function RowEditorPage() {
                         </span>
                         <MiniInput fieldKey="minDegreeName" />
                         <MiniInput fieldKey="minGpa" />
-                        <span className="text-sm font-bold text-slate-600">Hi</span>
+                        <span className="text-sm font-bold text-slate-600">High</span>
                         <MiniInput fieldKey="higherDegreeName" />
                         <MiniInput fieldKey="higherGpa" />
                       </div>
@@ -1277,13 +1339,13 @@ export function RowEditorPage() {
 
                     {englishVisible && (
                       <div
-                        className="rounded border border-sky-200/80 bg-sky-50/40 p-1.5"
+                        className="flex min-w-0 flex-1 flex-col rounded border border-sky-200/80 bg-sky-50/40 p-1.5"
                       >
                         <p className="mb-0.5 text-sm font-bold uppercase tracking-wide text-sky-800/80">
                           English
                         </p>
                         <div
-                          className="grid grid-cols-[2rem_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)_minmax(3.25rem,1fr)] items-center gap-x-1.5 gap-y-0.5"
+                          className="grid w-full grid-cols-[auto_minmax(0,1fr)_minmax(0,1fr)_minmax(0,1fr)] items-center gap-x-1.5 gap-y-0.5"
                         >
                           <span />
                           {ENGLISH_TESTS.map((test) => {
@@ -1326,57 +1388,60 @@ export function RowEditorPage() {
                     )}
 
                     <div
-                      className="flex max-w-full flex-col gap-1 rounded border border-amber-200/80 bg-amber-50/35 p-1.5"
+                      className="flex min-w-0 flex-1 flex-col gap-1 rounded border border-amber-200/80 bg-amber-50/35 p-1.5"
                     >
                       <p className="text-sm font-bold uppercase tracking-wide text-amber-900/70">
                         Scholarship
                       </p>
-                      <Cell fieldKey="scholarshipName" fitWidth boxClassName="max-w-full" />
-                      <div className="flex flex-wrap items-end gap-x-3 gap-y-1">
+                      <Cell fieldKey="scholarshipName" boxClassName="min-w-0 w-full" />
+                      <div className="grid grid-cols-2 items-end gap-x-2">
                         <Cell
                           fieldKey="scholarshipAmount"
-                          fitWidth
+                          boxClassName="min-w-0"
                           inputClassName="tabular-nums"
                         />
-                        <Cell fieldKey="scholarshipType" fitWidth />
+                        <Cell fieldKey="scholarshipType" boxClassName="min-w-0" />
+                      </div>
+                    </div>
+
+                    <div
+                      className="flex min-w-0 flex-1 flex-col rounded-md border border-emerald-200/70 bg-emerald-50/30 p-1.5"
+                    >
+                      <p className="mb-1 text-sm font-bold uppercase tracking-wide text-emerald-900/70">
+                        Fees
+                      </p>
+                      <div className="grid w-full grid-cols-3 items-end gap-x-2 gap-y-1">
+                        <Cell
+                          fieldKey="tuitionFee"
+                          boxClassName="min-w-0"
+                          inputClassName="tabular-nums"
+                        />
+                        <Cell fieldKey="currency" boxClassName="min-w-0" />
+                        <Cell
+                          fieldKey="initialDeposit"
+                          boxClassName="min-w-0"
+                          inputClassName="tabular-nums"
+                        />
+                        <Cell
+                          fieldKey="applicationFee"
+                          boxClassName="min-w-0"
+                          inputClassName="tabular-nums"
+                        />
+                        <Cell
+                          fieldKey="commission"
+                          boxClassName="min-w-0"
+                          inputClassName="tabular-nums"
+                        />
+                        <Cell
+                          fieldKey="applicationDeadline"
+                          boxClassName="min-w-0"
+                        />
                       </div>
                     </div>
                   </div>
                 </>
               )}
 
-              {/* Row 4: Fees — full width, no gap on the right */}
-              <div
-                className="rounded-md border border-emerald-200/70 bg-emerald-50/30 p-1.5"
-              >
-                <p className="mb-1 text-sm font-bold uppercase tracking-wide text-emerald-900/70">
-                  Fees
-                </p>
-                <div className="flex w-full flex-wrap items-end gap-x-3 gap-y-2">
-                  <Cell
-                    fieldKey="tuitionFee"
-                    fitWidth
-                    inputClassName="tabular-nums"
-                  />
-                  <Cell fieldKey="currency" fitWidth />
-                  <Cell
-                    fieldKey="initialDeposit"
-                    fitWidth
-                    inputClassName="tabular-nums"
-                  />
-                  <Cell
-                    fieldKey="applicationFee"
-                    fitWidth
-                    inputClassName="tabular-nums"
-                  />
-                  <Cell
-                    fieldKey="commission"
-                    fitWidth
-                    inputClassName="tabular-nums"
-                  />
-                  <Cell fieldKey="applicationDeadline" fitWidth />
-                </div>
-              </div>
             </section>
 
             {metaTabs.length > 0 && (
@@ -1443,13 +1508,49 @@ export function RowEditorPage() {
         {splitUrl && courseUrl && <CourseUrlReferencePanel url={courseUrl} />}
       </div>
 
-      {batch?.universityKey && (
+      {batchId && (
+        <AcademicReqPanel
+          batchId={batchId}
+          open={academicReqOpen}
+          onClose={() => setAcademicReqOpen(false)}
+        />
+      )}
+      {batch?.universityKey && !batch.sysCountryId && (
         <UniversityHelpersPanel
           universityKey={batch.universityKey}
           open={helpersOpen}
           onClose={() => setHelpersOpen(false)}
         />
       )}
+
+      <ConfirmDialog
+        open={confirmPublish}
+        title="Publish courses?"
+        confirmLabel={
+          (publishReadiness?.invalidRowCount ?? 0) > 0
+            ? 'Publish valid'
+            : 'Publish'
+        }
+        busyLabel="Publishing…"
+        tone="primary"
+        busy={publishing}
+        error={publishError}
+        onCancel={() => {
+          if (!publishing) {
+            setConfirmPublish(false);
+            setPublishError(null);
+          }
+        }}
+        onConfirm={() => void publishToCatalog()}
+      >
+        {(publishReadiness?.invalidRowCount ?? 0) > 0
+          ? `Publish ${Math.max(
+              0,
+              (publishReadiness?.rowCount ?? batch?.rowCount ?? 0) -
+                (publishReadiness?.invalidRowCount ?? 0),
+            )} valid courses to catalog? ${publishReadiness?.invalidRowCount} invalid rows will be skipped. Existing catalog courses for this university are replaced with the valid set.`
+          : 'Publish all validated courses to the live catalog? This replaces existing courses for this university.'}
+      </ConfirmDialog>
     </div>
   );
 }
