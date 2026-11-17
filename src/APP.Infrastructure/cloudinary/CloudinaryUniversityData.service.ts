@@ -308,4 +308,123 @@ export class CloudinaryUniversityDataService implements OnModuleInit {
     }
     return res.text();
   }
+
+  getCloudName(): string {
+    this.assertConfigured();
+    return this.config.get<string>('CLOUDINARY_CLOUD_NAME') ?? '';
+  }
+
+  generateSignedRawUpload(fullPublicId: string): {
+    uploadUrl: string;
+    apiKey: string;
+    timestamp: number;
+    signature: string;
+    publicId: string;
+    folder?: string;
+    resourceType: 'raw';
+    overwrite: string;
+  } {
+    this.assertConfigured();
+    const apiKey = this.config.get<string>('CLOUDINARY_API_KEY') ?? '';
+    const apiSecret = this.config.get<string>('CLOUDINARY_API_SECRET') ?? '';
+    const cloudName = this.getCloudName();
+    const timestamp = Math.round(Date.now() / 1000);
+    const slash = fullPublicId.lastIndexOf('/');
+    const folder = slash >= 0 ? fullPublicId.slice(0, slash) : undefined;
+    const publicId = slash >= 0 ? fullPublicId.slice(slash + 1) : fullPublicId;
+    const paramsToSign: Record<string, string | number> = {
+      timestamp,
+      public_id: publicId,
+      overwrite: 'true',
+    };
+    if (folder) {
+      paramsToSign.folder = folder;
+    }
+    const signature = cloudinary.utils.api_sign_request(paramsToSign, apiSecret);
+    return {
+      uploadUrl: `https://api.cloudinary.com/v1_1/${cloudName}/raw/upload`,
+      apiKey,
+      timestamp,
+      signature,
+      publicId,
+      folder,
+      resourceType: 'raw',
+      overwrite: 'true',
+    };
+  }
+
+  generateSignedImageUpload(
+    fullPublicId: string,
+    tags?: string,
+  ): {
+    uploadUrl: string;
+    apiKey: string;
+    timestamp: number;
+    signature: string;
+    publicId: string;
+    folder?: string;
+    resourceType: 'image';
+    overwrite: string;
+    tags?: string;
+  } {
+    this.assertConfigured();
+    const apiKey = this.config.get<string>('CLOUDINARY_API_KEY') ?? '';
+    const apiSecret = this.config.get<string>('CLOUDINARY_API_SECRET') ?? '';
+    const cloudName = this.getCloudName();
+    const timestamp = Math.round(Date.now() / 1000);
+    const slash = fullPublicId.lastIndexOf('/');
+    const folder = slash >= 0 ? fullPublicId.slice(0, slash) : undefined;
+    const publicId = slash >= 0 ? fullPublicId.slice(slash + 1) : fullPublicId;
+    const paramsToSign: Record<string, string | number> = {
+      timestamp,
+      public_id: publicId,
+      overwrite: 'true',
+    };
+    if (folder) {
+      paramsToSign.folder = folder;
+    }
+    if (tags) {
+      paramsToSign.tags = tags;
+    }
+    const signature = cloudinary.utils.api_sign_request(paramsToSign, apiSecret);
+    return {
+      uploadUrl: `https://api.cloudinary.com/v1_1/${cloudName}/image/upload`,
+      apiKey,
+      timestamp,
+      signature,
+      publicId,
+      folder,
+      resourceType: 'image',
+      overwrite: 'true',
+      tags,
+    };
+  }
+
+  rawPublicIdCandidates(publicId: string): string[] {
+    const trimmed = publicId.replace(/^\//, '');
+    const noExt = trimmed.replace(/\.[^./]+$/i, '');
+    return [...new Set([trimmed, noExt, `${noExt}.csv`, `${noExt}.md`])];
+  }
+
+  async resolveRawPublicId(publicId: string): Promise<string | null> {
+    this.assertConfigured();
+    for (const candidate of this.rawPublicIdCandidates(publicId)) {
+      try {
+        const res = await cloudinary.api.resource(candidate, {
+          resource_type: 'raw',
+        });
+        if (res?.public_id) return res.public_id as string;
+        return candidate;
+      } catch (err: unknown) {
+        const { httpCode } = this.parseCloudinaryApiError(err);
+        if (httpCode === 404) continue;
+        throw this.unavailableFromCloudinary(err);
+      }
+    }
+    return null;
+  }
+
+  async objectExists(publicId: string): Promise<boolean> {
+    return (await this.resolveRawPublicId(publicId)) !== null;
+  }
 }

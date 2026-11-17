@@ -12,3 +12,23 @@ export const DATA_ENTRY_HELPER_CLOUD_PATHS = {
 } as const;
 
 export type DataEntryHelperKey = keyof typeof DATA_ENTRY_HELPER_CLOUD_PATHS;
+
+export const DATA_ENTRY_HELPER_KEYS = Object.keys(
+  DATA_ENTRY_HELPER_CLOUD_PATHS,
+) as DataEntryHelperKey[];
+
+export const DATA_ENTRY_MAX_FILE_BYTES = 20 * 1024 * 1024;
+
+export const UNIVERSITY_IMAGE_CLOUD_PREFIX = 'universities';
+
+export const UNIVERSITY_IMAGE_KINDS = ['logo', 'cover'] as const;
+
+export type UniversityImageKind = (typeof UNIVERSITY_IMAGE_KINDS)[number];
+
+export const UNIVERSITY_IMAGE_EXTENSIONS = [
+  'jpg',
+  'jpeg',
+  'png',
+  'webp',
+  'gif',
+] as const;

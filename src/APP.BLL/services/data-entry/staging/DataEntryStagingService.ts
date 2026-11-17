@@ -11,8 +11,12 @@ import {
   DataEntryBatchStatus,
 } from '@entity/entities/DataEntryBatches.entity';
 import { DataEntryCourseRows } from '@entity/entities/DataEntryCourseRows.entity';
+import { DataEntryUniversityRows } from '@entity/entities/DataEntryUniversityRows.entity';
 import { SysUniversities } from '@entity/entities/SysUniversities.entity';
 import { SysCountries } from '@entity/entities/SysCountries.entity';
+import { DataEntryBatchType } from '@shared/enums/DataEntryBatchType.enum';
+import { UniversityRowValidator } from '../university/UniversityRowValidator';
+import { normalizeStagingUniversityRow } from '../university/UniversityImportSchema';
 import type { DataEntryUniversityListItemDto } from '@shared/dtos/data-entry/DataEntryUniversityListItemDto';
 import { parseCsv } from '../common/engine/CsvParser';
 import { CourseRowValidator } from '../course/validators/CourseRowValidator';
@@ -28,6 +32,7 @@ export class DataEntryStagingService {
     private readonly db: AppDbContext,
     private readonly catalog: DataEntryCloudCatalogService,
     private readonly validator: CourseRowValidator,
+    private readonly universityValidator: UniversityRowValidator,
     private readonly publish: DataEntryPublishService,
   ) {}
 
@@ -129,6 +134,7 @@ export class DataEntryStagingService {
   async getBatch(batchId: string): Promise<DataEntryBatches> {
     const batch = await this.db.Set(DataEntryBatches).findOne({
       where: { id: batchId },
+      relations: { SysCountry: true },
     });
     if (!batch) {
       throw new NotFoundException('Batch not found');
@@ -137,8 +143,12 @@ export class DataEntryStagingService {
   }
 
   async listInvalidRowIndexes(batchId: string): Promise<number[]> {
-    await this.getBatch(batchId);
-    const rows = await this.db.Set(DataEntryCourseRows).find({
+    const batch = await this.getBatch(batchId);
+    const table =
+      batch.batchType === DataEntryBatchType.UNIVERSITY
+        ? DataEntryUniversityRows
+        : DataEntryCourseRows;
+    const rows = await this.db.Set(table).find({
       where: { batchId, isValid: false },
       order: { rowIndex: 'ASC' },
       select: ['rowIndex'],
@@ -224,7 +234,18 @@ export class DataEntryStagingService {
     return batch;
   }
 
-  async getRow(batchId: string, rowIndex: number): Promise<DataEntryCourseRows> {
+  async getRow(
+    batchId: string,
+    rowIndex: number,
+  ): Promise<DataEntryCourseRows | DataEntryUniversityRows> {
+    const batch = await this.getBatch(batchId);
+    if (batch.batchType === DataEntryBatchType.UNIVERSITY) {
+      const row = await this.db.Set(DataEntryUniversityRows).findOne({
+        where: { batchId, rowIndex },
+      });
+      if (!row) throw new NotFoundException('Row not found');
+      return row;
+    }
     const row = await this.db.Set(DataEntryCourseRows).findOne({
       where: { batchId, rowIndex },
     });
@@ -238,8 +259,32 @@ export class DataEntryStagingService {
     batchId: string,
     rowIndex: number,
     fields: Record<string, string>,
-  ): Promise<DataEntryCourseRows> {
-    const row = await this.getRow(batchId, rowIndex);
+  ): Promise<DataEntryCourseRows | DataEntryUniversityRows> {
+    const batch = await this.getBatch(batchId);
+    if (batch.status === DataEntryBatchStatus.PUBLISHED) {
+      throw new ConflictException('Published batches cannot be edited');
+    }
+    if (batch.batchType === DataEntryBatchType.UNIVERSITY) {
+      const row = await this.db.Set(DataEntryUniversityRows).findOne({
+        where: { batchId, rowIndex },
+      });
+      if (!row) throw new NotFoundException('Row not found');
+      const merged = { ...row.fields, ...fields };
+      const normalized = normalizeStagingUniversityRow(merged);
+      const fieldErrors =
+        this.universityValidator.validateRowFieldErrors(normalized);
+      row.fields = normalized;
+      row.fieldErrors = fieldErrors;
+      row.isValid = this.universityValidator.isRowValid(fieldErrors);
+      await this.db.Set(DataEntryUniversityRows).save(row);
+      await this.recomputeBatchCounts(batchId);
+      return row;
+    }
+
+    const row = await this.db.Set(DataEntryCourseRows).findOne({
+      where: { batchId, rowIndex },
+    });
+    if (!row) throw new NotFoundException('Row not found');
     const merged = { ...row.fields, ...fields };
     const normalized = normalizeStagingCourseRow(merged as CsvRow);
     const courseRow = normalizeCourseCsvRow(normalized as CsvRow);
@@ -265,30 +310,49 @@ export class DataEntryStagingService {
     if (batch.status === DataEntryBatchStatus.PUBLISHED) {
       throw new ConflictException('Published batches cannot be revalidated');
     }
-    const rows = await this.db.Set(DataEntryCourseRows).find({
-      where: { batchId },
-      order: { rowIndex: 'ASC' },
-    });
-    for (const row of rows) {
-      const normalized = normalizeStagingCourseRow(row.fields as CsvRow);
-      const courseRow = normalizeCourseCsvRow(normalized as CsvRow);
-      const fieldErrors = this.validator.validateRowFieldErrors(courseRow);
-      row.fields = normalized;
-      row.fieldErrors = fieldErrors;
-      row.isValid = !Object.keys(fieldErrors).some(isCourseRowFieldRequired);
+    if (batch.batchType === DataEntryBatchType.UNIVERSITY) {
+      const rows = await this.db.Set(DataEntryUniversityRows).find({
+        where: { batchId },
+        order: { rowIndex: 'ASC' },
+      });
+      for (const row of rows) {
+        const normalized = normalizeStagingUniversityRow(row.fields);
+        const fieldErrors =
+          this.universityValidator.validateRowFieldErrors(normalized);
+        row.fields = normalized;
+        row.fieldErrors = fieldErrors;
+        row.isValid = this.universityValidator.isRowValid(fieldErrors);
+      }
+      await this.db.Set(DataEntryUniversityRows).save(rows);
+    } else {
+      const rows = await this.db.Set(DataEntryCourseRows).find({
+        where: { batchId },
+        order: { rowIndex: 'ASC' },
+      });
+      for (const row of rows) {
+        const normalized = normalizeStagingCourseRow(row.fields as CsvRow);
+        const courseRow = normalizeCourseCsvRow(normalized as CsvRow);
+        const fieldErrors = this.validator.validateRowFieldErrors(courseRow);
+        row.fields = normalized;
+        row.fieldErrors = fieldErrors;
+        row.isValid = !Object.keys(fieldErrors).some(isCourseRowFieldRequired);
+      }
+      await this.db.Set(DataEntryCourseRows).save(rows);
     }
-    await this.db.Set(DataEntryCourseRows).save(rows);
     await this.recomputeBatchCounts(batchId);
     return this.getBatch(batchId);
   }
 
   private async recomputeBatchCounts(batchId: string): Promise<void> {
+    const batch = await this.getBatch(batchId);
+    const table =
+      batch.batchType === DataEntryBatchType.UNIVERSITY
+        ? DataEntryUniversityRows
+        : DataEntryCourseRows;
     const invalidRowCount = await this.db
-      .Set(DataEntryCourseRows)
+      .Set(table)
       .count({ where: { batchId, isValid: false } });
-    const rowCount = await this.db
-      .Set(DataEntryCourseRows)
-      .count({ where: { batchId } });
+    const rowCount = await this.db.Set(table).count({ where: { batchId } });
     await this.db.Set(DataEntryBatches).update(
       { id: batchId },
       { invalidRowCount, rowCount },

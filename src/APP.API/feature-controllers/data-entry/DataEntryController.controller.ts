@@ -2,15 +2,23 @@ import {
   BadRequestException,
   Body,
   Controller,
+  Delete,
   Get,
   Param,
   ParseIntPipe,
+  ParseUUIDPipe,
   Patch,
   Post,
   Query,
+  StreamableFile,
   UseGuards,
 } from '@nestjs/common';
-import { ApiBearerAuth, ApiOperation, ApiTags } from '@nestjs/swagger';
+import {
+  ApiBearerAuth,
+  ApiOperation,
+  ApiProduces,
+  ApiTags,
+} from '@nestjs/swagger';
 import { JwtAuthGuard } from '@api/common/guards/JwtAuthGuard.guard';
 import { RoleGuard } from '@api/common/guards/RoleGuard.guard';
 import { RequireRole } from '@api/common/decorators/RequireRole.decorator';
@@ -20,9 +28,18 @@ import type { ICurrentUser } from '@shared/interfaces/domain';
 import { DataEntryCloudCatalogService } from '@bll/services/data-entry/staging/DataEntryCloudCatalogService';
 import { DataEntryStagingService } from '@bll/services/data-entry/staging/DataEntryStagingService';
 import { DataEntryPublishService } from '@bll/services/data-entry/staging/DataEntryPublishService';
+import { DataEntryUploadService } from '@bll/services/data-entry/staging/DataEntryUploadService';
+import { DataEntryDashboardService } from '@bll/services/data-entry/staging/DataEntryDashboardService';
+import { DataEntryExportService } from '@bll/services/data-entry/staging/DataEntryExportService';
 import { CreateDataEntryBatchRequestDto } from '@shared/dtos/data-entry/CreateDataEntryBatchRequestDto';
 import { UpdateDataEntryRowRequestDto } from '@shared/dtos/data-entry/UpdateDataEntryRowRequestDto';
-import type { DataEntryHelperKey } from '@shared/constants/dataEntryCloud.constants';
+import { GenerateDataEntryUploadUrlRequestDto } from '@shared/dtos/data-entry/GenerateDataEntryUploadUrlRequestDto';
+import { GenerateUniversityImageUploadUrlRequestDto } from '@shared/dtos/data-entry/GenerateUniversityImageUploadUrlRequestDto';
+import { RemapDashboardIntakesRequestDto } from '@shared/dtos/data-entry/RemapDashboardIntakesRequestDto';
+import {
+  DATA_ENTRY_HELPER_KEYS,
+  type DataEntryHelperKey,
+} from '@shared/constants/dataEntryCloud.constants';
 @ApiTags('data-entry')
 @Controller('data-entry')
 @UseGuards(JwtAuthGuard, RoleGuard)
@@ -33,7 +50,55 @@ export class DataEntryController {
     private readonly catalog: DataEntryCloudCatalogService,
     private readonly staging: DataEntryStagingService,
     private readonly publish: DataEntryPublishService,
+    private readonly upload: DataEntryUploadService,
+    private readonly dashboard: DataEntryDashboardService,
+    private readonly exportService: DataEntryExportService,
   ) {}
+
+  @Get('destinations')
+  @ApiOperation({ summary: 'List destination countries with batch counts' })
+  listDestinations() {
+    return this.upload.listDestinations();
+  }
+
+  @Get('destinations/:countryId/batches')
+  @ApiOperation({ summary: 'List staging batches for a destination country' })
+  listCountryBatches(@Param('countryId', ParseUUIDPipe) countryId: string) {
+    return this.upload.listCountryBatches(countryId);
+  }
+
+  @Get('destinations/:countryId/universities')
+  @ApiOperation({
+    summary: 'Published universities for a destination with latest course batch',
+  })
+  listCountryUniversities(
+    @Param('countryId', ParseUUIDPipe) countryId: string,
+  ) {
+    return this.upload.listCountryUniversities(countryId);
+  }
+
+  @Get('dashboard')
+  @ApiOperation({ summary: 'Last dashboard snapshot (no catalog scan)' })
+  getDashboard() {
+    return this.dashboard.getSnapshot();
+  }
+
+  @Post('dashboard/refresh')
+  @ApiOperation({
+    summary: 'Rebuild dashboard snapshot from catalog tables',
+  })
+  refreshDashboard(@CurrentUser() user: ICurrentUser) {
+    return this.dashboard.refresh(user.userId);
+  }
+
+  @Post('dashboard/intakes/remap')
+  @ApiOperation({
+    summary:
+      'Move one intake month/year to another for every course at a university',
+  })
+  remapDashboardIntakes(@Body() dto: RemapDashboardIntakesRequestDto) {
+    return this.dashboard.remapIntakes(dto);
+  }
 
   @Get('universities')
   @ApiOperation({
@@ -50,6 +115,47 @@ export class DataEntryController {
   })
   syncUniversitiesFromCloud() {
     return this.staging.syncSysUniversitiesFromCloud();
+  }
+
+  @Post('batches/upload-url')
+  @ApiOperation({
+    summary:
+      'Create a batch and return signed Cloudinary raw-upload params (CSV + helpers)',
+  })
+  generateUploadUrl(
+    @Body() dto: GenerateDataEntryUploadUrlRequestDto,
+    @CurrentUser() user: ICurrentUser,
+  ) {
+    return this.upload.generateUploadUrl(user.userId, dto);
+  }
+
+  @Delete('batches/:batchId')
+  @ApiOperation({
+    summary: 'Remove a failed or incomplete Cloudinary upload batch',
+  })
+  discardBatch(@Param('batchId', ParseUUIDPipe) batchId: string) {
+    return this.upload.discardBatch(batchId);
+  }
+
+  @Post('batches/:batchId/university-image-upload-url')
+  @ApiOperation({
+    summary:
+      'Signed Cloudinary image upload for university logo or cover (browser uploads the file)',
+  })
+  generateUniversityImageUploadUrl(
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+    @Body() dto: GenerateUniversityImageUploadUrlRequestDto,
+  ) {
+    return this.upload.generateUniversityImageUploadUrl(batchId, dto);
+  }
+
+  @Post('batches/:batchId/confirm-upload')
+  @ApiOperation({
+    summary:
+      'Read CSV + helpers from Cloudinary and stage rows after browser upload',
+  })
+  confirmUpload(@Param('batchId') batchId: string) {
+    return this.upload.confirmUpload(batchId);
   }
 
   @Post('batches')
@@ -91,6 +197,22 @@ export class DataEntryController {
     };
   }
 
+  @Get('batches/:batchId/export.csv')
+  @ApiProduces('text/csv')
+  @ApiOperation({
+    summary: 'Stream valid staging rows as RFC 4180 CSV (valid rows only)',
+  })
+  async exportValidCsv(
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+  ): Promise<StreamableFile> {
+    const { stream, filename } =
+      await this.exportService.openValidCsvStream(batchId);
+    return new StreamableFile(stream, {
+      type: 'text/csv; charset=utf-8',
+      disposition: `attachment; filename="${filename}"`,
+    });
+  }
+
   @Get('batches/:batchId/invalid-rows')
   @ApiOperation({
     summary:
@@ -111,16 +233,41 @@ export class DataEntryController {
 
   @Post('batches/:batchId/publish')
   @ApiOperation({
-    summary: 'Push validated staging rows to UniCourses / intakes / scholarships',
+    summary: 'Push validated staging rows to catalog tables',
   })
   publishBatch(@Param('batchId') batchId: string) {
     return this.publish.publishBatchToCatalog(batchId);
   }
 
+  @Post('batches/:batchId/revalidate')
+  @ApiOperation({ summary: 'Re-run validation on every staging row' })
+  revalidateBatch(@Param('batchId') batchId: string) {
+    return this.staging.revalidateBatch(batchId);
+  }
+
+  @Get('batches/:batchId/guide/:helperKey')
+  @ApiOperation({
+    summary: 'Helper markdown from batch snapshot or Cloudinary public_id',
+  })
+  getBatchGuide(
+    @Param('batchId') batchId: string,
+    @Param('helperKey') helperKey: string,
+  ) {
+    if (!DATA_ENTRY_HELPER_KEYS.includes(helperKey as DataEntryHelperKey)) {
+      throw new BadRequestException(`Unknown helper "${helperKey}"`);
+    }
+    return this.upload.getGuide(batchId, helperKey as DataEntryHelperKey);
+  }
+
   @Get('batches/:batchId')
   @ApiOperation({ summary: 'Batch metadata (counts, status, university key)' })
-  getBatch(@Param('batchId') batchId: string) {
-    return this.staging.getBatch(batchId);
+  async getBatch(@Param('batchId') batchId: string) {
+    const batch = await this.staging.getBatch(batchId);
+    return {
+      ...batch,
+      countryCode: batch.SysCountry?.countryCode ?? null,
+      countryName: batch.SysCountry?.countryName ?? null,
+    };
   }
 
   @Get('batches/:batchId/rows/:rowIndex')

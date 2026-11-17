@@ -4,6 +4,7 @@ import {
   ExecutionContext,
   CallHandler,
   HttpStatus,
+  StreamableFile,
 } from '@nestjs/common';
 import { Observable } from 'rxjs';
 import { map } from 'rxjs/operators';
@@ -32,6 +33,11 @@ export class ResponseInterceptor implements NestInterceptor {
 
     return next.handle().pipe(
       map((data) => {
+        // Streamed files (CSV export) must not be wrapped as JSON.
+        if (data instanceof StreamableFile) {
+          return data;
+        }
+
         // If data is already a SuccessResponseDto, return as is
         if (data instanceof SuccessResponseDto) {
           return data;

@@ -56,6 +56,7 @@ export async function createNestApp(
     app.enableCors({
       origin: allowAll ? true : origins,
       credentials: !allowAll,
+      exposedHeaders: ['Content-Disposition'],
     });
   }
 
