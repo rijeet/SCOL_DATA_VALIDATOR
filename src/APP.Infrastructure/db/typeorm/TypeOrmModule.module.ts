@@ -60,6 +60,8 @@ import { ConsultantCertifications } from '@entity/entities/ConsultantCertificati
 import { UniApplicationStage } from '@entity/entities/UniApplicationStage.entity';
 import { DataEntryBatches } from '@entity/entities/DataEntryBatches.entity';
 import { DataEntryCourseRows } from '@entity/entities/DataEntryCourseRows.entity';
+import { DataEntryUniversityRows } from '@entity/entities/DataEntryUniversityRows.entity';
+import { DataEntryDashboardSnapshots } from '@entity/entities/DataEntryDashboardSnapshots.entity';
 import { AppDbContext } from './AppDbContext';
 
 @Global()
@@ -127,6 +129,8 @@ import { AppDbContext } from './AppDbContext';
             UniApplicationStage,
             DataEntryBatches,
             DataEntryCourseRows,
+            DataEntryUniversityRows,
+            DataEntryDashboardSnapshots,
           ],
           synchronize: false,
           logging: getAppStage() === 'dev' ? ['error', 'warn'] : ['error'],
@@ -192,6 +196,8 @@ import { AppDbContext } from './AppDbContext';
       UniApplicationStage,
       DataEntryBatches,
       DataEntryCourseRows,
+      DataEntryUniversityRows,
+      DataEntryDashboardSnapshots,
     ]),
   ],
   providers: [AppDbContext],

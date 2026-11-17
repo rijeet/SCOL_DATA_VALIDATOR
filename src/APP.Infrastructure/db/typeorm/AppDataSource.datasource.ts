@@ -103,6 +103,8 @@ import { ConsultantCertifications } from '@entity/entities/ConsultantCertificati
 import { UniApplicationStage } from '@entity/entities/UniApplicationStage.entity';
 import { DataEntryBatches } from '@entity/entities/DataEntryBatches.entity';
 import { DataEntryCourseRows } from '@entity/entities/DataEntryCourseRows.entity';
+import { DataEntryUniversityRows } from '@entity/entities/DataEntryUniversityRows.entity';
+import { DataEntryDashboardSnapshots } from '@entity/entities/DataEntryDashboardSnapshots.entity';
 
 /**
  * AppDataSource - TypeORM DataSource for migrations and CLI operations
@@ -170,6 +172,8 @@ const AppDataSource = new DataSource({
     UniApplicationStage,
     DataEntryBatches,
     DataEntryCourseRows,
+    DataEntryUniversityRows,
+    DataEntryDashboardSnapshots,
   ],
 
   migrations: [migrationPath],
