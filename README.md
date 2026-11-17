@@ -9,12 +9,12 @@ A NestJS-based REST API backend built with Clean Architecture principles. This r
 | Step | Where | What |
 |------|--------|------|
 | 1 | Login | Admin JWT (`npm run seed:admin`) |
-| 2 | University list | Rows from **`sys_Universities`** (Postgres) |
-| 3 | Optional import | Cloudinary `SCOL_DATA/{uniName}/*_reviewed.csv` → **staging** (`DataEntryBatches`, `DataEntryCourseRows`) |
-| 4 | Row editor | Fix fields; **Prev/Next issue** jumps invalid rows; **Helpers** = Cloudinary markdown |
-| 5 | Publish | When all rows valid → **Publish catalog** → `UniCourses`, `UniCourseIntakes`, `CourseIntakeScholarships`, `CourseEngReq`, `UniAcademicReq`, `UniEngReq` |
+| 2 | Destinations | Pick **UK / Australia / Germany** |
+| 3 | Upload | University or course CSV (+ optional helper `.md`) → **signed Cloudinary upload** → API reads objects and stages rows |
+| 4 | Row editor | Fix fields; **Guide** opens helper notes in a new page |
+| 5 | Publish | Valid batch → catalog tables (`sys_Universities` + geo, or `UniCourses` + intakes / scholarships / English reqs) |
 
-`uniName` in the database must match the Cloudinary folder name (e.g. `Anglia Ruskin University - ARU`).
+University CSV must be published before course CSV (`uniName` must already exist in `sys_Universities`). Files never pass through the Nest API — the browser uploads to Cloudinary, then `confirm-upload` downloads them.
 
 ### One-time setup
 
@@ -23,6 +23,7 @@ Set-Location "e:\Project Next\ADDISONAL SCOL\scol-backend"
 npm install
 npm run typeorm:run
 npm run seed:admin
+npm run seed:destinations
 Set-Location scol-admin
 npm install
 # Optional: copy env.example.txt → .env.local for API URL + one-click login
@@ -85,9 +86,10 @@ Two projects: **API** (repo root) and **scol-admin** (`scol-admin/`). Step-by-st
 
 ### Publish behaviour
 
-- Batch must be **fully valid** (`invalidRowCount === 0`) and linked to a `sys_Universities` row.
-- **Publish replaces** all existing `UniCourses` (and related rows) for that university in one transaction.
-- After publish, the batch status is **`PUBLISHED`**; the row editor is view-only until you **Re-import** a new staging batch.
+- Batch must be **fully valid** (`invalidRowCount === 0`).
+- University publish upserts `sys_Countries` / `sys_States` / `sys_Cities` / `sys_Universities` and seeds `UniApplicationStage` for **new** universities.
+- Course publish upserts `UniCourses` and child rows for universities named in the CSV (university must already exist). Courses for those universities that are not in the CSV are removed.
+- After publish, the batch is **`PUBLISHED`** (view-only). Upload a new CSV to edit again.
 
 ### Troubleshooting
 
