@@ -13,6 +13,7 @@ import '../extensions/QueryBuilderExtensions';
 import { SysCountries } from '@entity/entities/SysCountries.entity';
 import { SysAcademicDegrees } from '@entity/entities/SysAcademicDegrees.entity';
 import { SysEnglishTests } from '@entity/entities/SysEnglishTests.entity';
+import { SysAmountTypes } from '@entity/entities/SysAmountTypes.entity';
 import { SysProgrammes } from '@entity/entities/SysProgrammes.entity';
 import { SysPermissions } from '@entity/entities/SysPermissions.entity';
 import { SysRoles } from '@entity/entities/SysRoles.entity';
@@ -81,6 +82,7 @@ import { AppDbContext } from './AppDbContext';
           entities: [
             SysCountries,
             SysAcademicDegrees,
+            SysAmountTypes,
             SysEnglishTests,
             SysProgrammes,
             SysPermissions,
@@ -150,6 +152,7 @@ import { AppDbContext } from './AppDbContext';
       SysAcademicDegrees,
       SysEnglishTests,
       SysProgrammes,
+      SysAmountTypes,
       SysPermissions,
       SysRoles,
       SysLeadProfiles,

@@ -19,6 +19,7 @@ import { SysLeadProfiles } from '@entity/entities/SysLeadProfiles.entity';
 import { SysCountries } from '@entity/entities/SysCountries.entity';
 import { SysAcademicDegrees } from '@entity/entities/SysAcademicDegrees.entity';
 import { SysEnglishTests } from '@entity/entities/SysEnglishTests.entity';
+import { SysAmountTypes } from '@entity/entities/SysAmountTypes.entity';
 import { SysEnglishTestSections } from '@entity/entities/SysEnglishTestSections.entity';
 import { SysProgrammes } from '@entity/entities/SysProgrammes.entity';
 import { LeadAcademicResults } from '@entity/entities/LeadAcademicResults.entity';
@@ -134,6 +135,9 @@ export class AppDbContext {
 
     @InjectRepository(SysEnglishTests)
     public readonly englishTests: Repository<SysEnglishTests>,
+
+    @InjectRepository(SysAmountTypes)
+    public readonly amountTypes: Repository<SysAmountTypes>,
 
     @InjectRepository(SysEnglishTestSections)
     public readonly englishTestSections: Repository<SysEnglishTestSections>,

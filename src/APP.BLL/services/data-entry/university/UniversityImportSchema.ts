@@ -1,4 +1,5 @@
 import type { CsvImportSchema } from '../common/abstractions/CsvImportSchema';
+import { normalizeCommissionType } from '@shared/constants/amountTypes.constants';
 
 /** Matches scol-backend university.csv headers. */
 export const UNIVERSITY_INPUT_HEADERS = [
@@ -37,5 +38,7 @@ export function normalizeStagingUniversityRow(
     const v = row[key];
     out[key] = typeof v === 'string' ? v.trim() : v == null ? '' : String(v);
   }
+  const commissionType = normalizeCommissionType(out.commissionType);
+  if (commissionType) out.commissionType = commissionType;
   return out;
 }

@@ -24,7 +24,8 @@
     "upload:uk-uni:dry-run": "node -r ./load-env.js scripts/upload-uk-uni-to-cloudinary.mjs --dry-run",
     "seed:admin": "ts-node -r tsconfig-paths/register --transpile-only src/seeds/create-admin.seed.ts",
     "seed:consultant": "ts-node -r tsconfig-paths/register --transpile-only src/seeds/create-consultant.seed.ts",
-    "seed:destinations": "ts-node -r tsconfig-paths/register --transpile-only src/seeds/seed-destinations.ts"
+    "seed:destinations": "ts-node -r tsconfig-paths/register --transpile-only src/seeds/seed-destinations.ts",
+    "seed:amount-types": "ts-node -r ./load-env.js -r tsconfig-paths/register --transpile-only src/seeds/seed-amount-types.ts"
   },
   "dependencies": {
     "@automapper/classes": "8.8.1",
