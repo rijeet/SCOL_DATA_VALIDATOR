@@ -4,7 +4,8 @@ export const FIELD_FORMAT_HINTS: Record<string, string> = {
     'Use month + year, comma-separated — e.g. September 2026, January 2027 or Sep-26, Jan-27',
   minGpa: 'Number on the scale for min degree (SSC/HSC up to 5.0; BSc/MSc up to 4.0)',
   higherGpa: 'Number on the scale for higher degree (SSC/HSC 5.0; BSc/MSc 4.0)',
-  higherDegreeName: 'Required when higher GPA is filled in',
+  minDegreeName: 'Choose SSC, HSC, BSc, or MSc',
+  higherDegreeName: 'Choose SSC, HSC, BSc, or MSc — required when higher GPA is filled in',
   AcademicRequirementsMetaData:
     'JSON array of items: [{"subtitle":"…","description":"…"}]. Click Format JSON after fixing syntax.',
   feesMetaData:
@@ -23,13 +24,17 @@ export const FIELD_FORMAT_HINTS: Record<string, string> = {
   initialDeposit: 'Numbers only — empty shows as Missing',
   applicationFee: 'Numbers only — empty shows as Missing',
   commission: 'Numbers only — empty shows as Missing',
+  commissionType: 'Choose Amount or Percentage',
+  scholarshipType: 'Choose Amount or Percentage',
   applicationDeadline: 'e.g. 08-31-2026 — empty shows as Missing',
   courseDuration: 'Months as a number, e.g. 12 — empty shows as Missing',
   courseUrlExternal: 'Full course URL — empty shows as Missing',
+  courseKey:
+    'Stable identity for DATA FIX. Same URL can be used by foundation/placement siblings — do not edit.',
   logoUrl:
-    'Choose logo to upload, or paste a full http(s) URL',
+    'Choose a JPEG, PNG, or WebP logo (max 5 MB), or paste a full http(s) URL',
   coverImageUrl:
-    'Choose cover photo to upload, or paste a full http(s) URL',
+    'Choose a JPEG, PNG, or WebP cover (max 5 MB), or paste a full http(s) URL',
   website: 'Full website URL starting with http:// or https://',
   campusLifeLinks:
     'Quoted YouTube/video URLs, e.g. "https://youtu.be/abc", "https://youtu.be/def". No commas inside a URL.',

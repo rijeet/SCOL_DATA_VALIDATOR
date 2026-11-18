@@ -1,4 +1,4 @@
-import { ChevronLeft, ChevronRight } from 'lucide-react';
+import { ChevronLeft, ChevronRight, Copy } from 'lucide-react';
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -13,6 +13,15 @@ import {
   fetchInvalidRowIndexes,
   resolveInitialRowIndex,
 } from '../lib/batchInvalidRows';
+import { courseCommissionAmount } from '../lib/courseCommissionAmount';
+import {
+  AMOUNT_TYPES,
+  normalizeCommissionType,
+} from '../lib/amountTypes';
+import {
+  canonicalEntryDegreeName,
+  DEGREE_SEEDS,
+} from '../lib/degreeSeeds';
 import {
   isCourseRowFieldRequired,
   validateCourseRowScoreAndCompleteness,
@@ -43,6 +52,8 @@ type BatchResponse = {
   invalidRowCount: number;
   status?: string;
   sysCountryId?: string | null;
+  uniCommission?: string | null;
+  uniCommissionType?: string | null;
 };
 
 type PublishReadiness = {
@@ -92,6 +103,7 @@ const LABELS: Record<string, string> = {
   commission: 'Commission',
   applicationDeadline: 'Deadline',
   courseUrlExternal: 'Course URL',
+  courseKey: 'Course key',
 };
 
 const IDENTITY_PLACEHOLDERS: Record<string, string> = {
@@ -519,22 +531,47 @@ export function RowEditorPage() {
     if (!hasField(fieldKey, draft, row)) {
       return <span aria-hidden className="block h-7" />;
     }
+    const isEntryDegree =
+      fieldKey === 'minDegreeName' || fieldKey === 'higherDegreeName';
     return (
       <FieldErrorTooltip
         {...fieldTooltipProps(fieldKey)}
         className="min-w-0 w-full"
       >
-        <input
-          className={inputClass(
-            fieldKey,
-            `h-8 w-full min-w-0 px-1 text-center text-sm font-bold tabular-nums ${className}`,
-            'full',
-          )}
-          value={draft[fieldKey] ?? ''}
-          onChange={(e) => setField(fieldKey, e.target.value)}
-          onBlur={() => void flushSave()}
-          aria-invalid={Boolean(displayFieldErrors[fieldKey])}
-        />
+        {isEntryDegree ? (
+          <select
+            className={inputClass(
+              fieldKey,
+              `h-8 w-full min-w-0 px-1 text-center text-sm font-bold ${className}`,
+              'full',
+            )}
+            value={canonicalEntryDegreeName(draft[fieldKey] ?? '') ?? ''}
+            onChange={(e) => setField(fieldKey, e.target.value)}
+            onBlur={() => void flushSave()}
+            aria-invalid={Boolean(displayFieldErrors[fieldKey])}
+          >
+            <option value="">
+              {fieldKey === 'higherDegreeName' ? 'None' : 'Select'}
+            </option>
+            {DEGREE_SEEDS.map((d) => (
+              <option key={d.degreeName} value={d.degreeName}>
+                {d.degreeName}
+              </option>
+            ))}
+          </select>
+        ) : (
+          <input
+            className={inputClass(
+              fieldKey,
+              `h-8 w-full min-w-0 px-1 text-center text-sm font-bold tabular-nums ${className}`,
+              'full',
+            )}
+            value={draft[fieldKey] ?? ''}
+            onChange={(e) => setField(fieldKey, e.target.value)}
+            onBlur={() => void flushSave()}
+            aria-invalid={Boolean(displayFieldErrors[fieldKey])}
+          />
+        )}
       </FieldErrorTooltip>
     );
   }
@@ -554,6 +591,26 @@ export function RowEditorPage() {
     boxClassName?: string;
     fitWidth?: boolean;
   }) {
+    if (fieldKey === 'commission') {
+      const shown = courseCommissionAmount({
+        commissionType: batch?.uniCommissionType ?? '',
+        commission: batch?.uniCommission ?? '',
+        tuitionFee: draft.tuitionFee ?? '',
+      });
+      return (
+        <div
+          className={`flex flex-col items-start gap-0.5 ${boxClassName || 'min-w-0'}`}
+          title="University holds this"
+        >
+          <span className="whitespace-nowrap text-sm font-bold text-slate-500">
+            {label ?? LABELS.commission}
+          </span>
+          <p className="w-full rounded bg-slate-100 px-2 py-1 text-sm font-medium text-slate-500 tabular-nums">
+            {shown || '—'}
+          </p>
+        </div>
+      );
+    }
     if (!hasField(fieldKey, draft, row)) return null;
     const text = label ?? LABELS[fieldKey] ?? fieldKey;
     const value = draft[fieldKey] ?? '';
@@ -580,6 +637,21 @@ export function RowEditorPage() {
               onBlur={() => void flushSave()}
               aria-invalid={Boolean(displayFieldErrors[fieldKey])}
             />
+          ) : fieldKey === 'scholarshipType' ? (
+            <select
+              className={inputClass(fieldKey, inputClassName, widthMode)}
+              value={normalizeCommissionType(value) ?? ''}
+              onChange={(e) => setField(fieldKey, e.target.value)}
+              onBlur={() => void flushSave()}
+              aria-invalid={Boolean(displayFieldErrors[fieldKey])}
+            >
+              <option value="">Select type</option>
+              {AMOUNT_TYPES.map((opt) => (
+                <option key={opt.typeCode} value={opt.typeCode}>
+                  {opt.typeName}
+                </option>
+              ))}
+            </select>
           ) : (
             <input
               className={inputClass(fieldKey, inputClassName, widthMode)}
@@ -873,6 +945,33 @@ export function RowEditorPage() {
             boxClassName="w-full min-w-0"
           />
         )}
+        <div className="flex min-w-0 flex-col gap-0.5">
+          <span className="text-sm font-bold text-slate-500">
+            {LABELS.courseKey}
+          </span>
+          <div className="flex min-w-0 items-center gap-1">
+            <p
+              className="min-w-0 flex-1 truncate rounded bg-slate-100 px-2 py-1 font-mono text-xs font-medium text-slate-600"
+              title="Stable identity for DATA FIX. Not editable."
+            >
+              {(draft.courseKey ?? '').trim() || 'Assigned on export'}
+            </p>
+            {(draft.courseKey ?? '').trim() ? (
+              <button
+                type="button"
+                className="shrink-0 rounded border border-slate-300 p-1 text-slate-600 hover:bg-slate-50"
+                title="Copy courseKey"
+                onClick={() => {
+                  void navigator.clipboard.writeText(
+                    (draft.courseKey ?? '').trim(),
+                  );
+                }}
+              >
+                <Copy className="h-3.5 w-3.5" aria-hidden />
+              </button>
+            ) : null}
+          </div>
+        </div>
       </div>
     );
   }

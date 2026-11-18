@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useState } from 'react';
-import { CloudDownload, CloudUpload, Trash2 } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { CloudDownload, CloudUpload, FileSpreadsheet, Trash2 } from 'lucide-react';
 import { Link, useNavigate, useParams } from 'react-router-dom';
 import { AdminShell } from '../components/AdminShell';
 import { ConfirmDialog } from '../components/ConfirmDialog';
@@ -12,6 +12,7 @@ import {
   statusLabel,
   validRowCount,
 } from '../lib/batches';
+import { applyFilledCsv } from '../lib/applyFilledCsv';
 import { exportBatchCsv } from '../lib/exportBatchCsv';
 import { resolveInitialRowIndex } from '../lib/initialWorkRow';
 import { setWorkSession } from '../lib/workSession';
@@ -30,11 +31,15 @@ export function CountryPage() {
   const [publishingId, setPublishingId] = useState<string | null>(null);
   const [deletingId, setDeletingId] = useState<string | null>(null);
   const [exportingId, setExportingId] = useState<string | null>(null);
+  const [applyingId, setApplyingId] = useState<string | null>(null);
+  const filledInputRef = useRef<HTMLInputElement>(null);
+  const applyBatchIdRef = useRef<string | null>(null);
   const [pending, setPending] = useState<null | {
     kind: 'publish' | 'delete';
     batch: BatchItem;
   }>(null);
   const [actionError, setActionError] = useState<string | null>(null);
+  const [applyNote, setApplyNote] = useState<string | null>(null);
 
   const title = country?.countryName ?? 'Destination';
   const universityBatches = useMemo(
@@ -168,15 +173,43 @@ export function CountryPage() {
   async function exportRows(
     batch: Pick<BatchItem, 'id' | 'rowCount'>,
     fileLabel: string,
+    format?: 'data-fix',
   ) {
     setExportingId(batch.id);
     setActionError(null);
     try {
-      await exportBatchCsv(batch.id, fileLabel);
+      await exportBatchCsv(batch.id, fileLabel, format);
     } catch (e) {
       setActionError(e instanceof Error ? e.message : 'Export failed');
     } finally {
       setExportingId(null);
+    }
+  }
+
+  function pickFilledCsv(batchId: string) {
+    applyBatchIdRef.current = batchId;
+    filledInputRef.current?.click();
+  }
+
+  async function onFilledFile(file: File | undefined) {
+    const batchId = applyBatchIdRef.current;
+    applyBatchIdRef.current = null;
+    if (!file || !batchId) return;
+    setApplyingId(batchId);
+    setActionError(null);
+    setApplyNote(null);
+    try {
+      const res = await applyFilledCsv(batchId, file);
+      const skip = res.skipped.length
+        ? ` ${res.skipped.length} skipped.`
+        : '';
+      setApplyNote(
+        `Updated ${res.updated} staging rows, ${res.catalogUpdated} catalog.${skip}`,
+      );
+    } catch (e) {
+      setActionError(e instanceof Error ? e.message : 'Apply filled CSV failed');
+    } finally {
+      setApplyingId(null);
     }
   }
 
@@ -204,6 +237,20 @@ export function CountryPage() {
         {actionError && !pending && (
           <p className="mb-4 text-sm font-bold text-red-600">{actionError}</p>
         )}
+        {applyNote && (
+          <p className="mb-4 text-sm font-bold text-emerald-700">{applyNote}</p>
+        )}
+        <input
+          ref={filledInputRef}
+          type="file"
+          accept=".csv,text/csv"
+          className="hidden"
+          onChange={(e) => {
+            const file = e.target.files?.[0];
+            e.target.value = '';
+            void onFilledFile(file);
+          }}
+        />
 
         <section className="mb-8">
           <div className="mb-3 flex flex-wrap items-center justify-between gap-3">
@@ -309,22 +356,54 @@ export function CountryPage() {
                       </button>
                     )}
                     {work && work.rowCount > 0 && (
-                      <button
-                        type="button"
-                        disabled={exportingId === work.id}
-                        onClick={() =>
-                          void exportRows(
-                            work,
-                            work.sourceFileName || uni.uniName,
-                          )
-                        }
-                        className="inline-flex items-center gap-1 rounded border border-slate-300 px-3 py-2 text-sm font-bold text-slate-800 disabled:opacity-50"
-                      >
-                        <CloudDownload className="h-4 w-4" aria-hidden />
-                        {exportingId === work.id
-                          ? 'Downloading…'
-                          : 'Export CSV'}
-                      </button>
+                      <>
+                        <button
+                          type="button"
+                          disabled={exportingId === work.id}
+                          onClick={() =>
+                            void exportRows(
+                              work,
+                              work.sourceFileName || uni.uniName,
+                            )
+                          }
+                          className="inline-flex items-center gap-1 rounded border border-slate-300 px-3 py-2 text-sm font-bold text-slate-800 disabled:opacity-50"
+                        >
+                          <CloudDownload className="h-4 w-4" aria-hidden />
+                          {exportingId === work.id
+                            ? 'Downloading…'
+                            : 'Export CSV'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={exportingId === work.id}
+                          onClick={() =>
+                            void exportRows(
+                              work,
+                              uni.uniName,
+                              'data-fix',
+                            )
+                          }
+                          className="inline-flex items-center gap-1 rounded border border-slate-300 px-3 py-2 text-sm font-bold text-slate-800 disabled:opacity-50"
+                          title="All course rows (valid and invalid). Drop in DATA FIX 4_col"
+                        >
+                          <FileSpreadsheet className="h-4 w-4" aria-hidden />
+                          {exportingId === work.id
+                            ? 'Downloading…'
+                            : 'Export for DATA FIX'}
+                        </button>
+                        <button
+                          type="button"
+                          disabled={applyingId === work.id}
+                          onClick={() => pickFilledCsv(work.id)}
+                          className="inline-flex items-center gap-1 rounded border border-emerald-300 px-3 py-2 text-sm font-bold text-emerald-800 disabled:opacity-50"
+                          title="Apply 4_col_filled CSV by courseKey"
+                        >
+                          <CloudUpload className="h-4 w-4" aria-hidden />
+                          {applyingId === work.id
+                            ? 'Applying…'
+                            : 'Apply filled CSV'}
+                        </button>
+                      </>
                     )}
                     {canPublish && work && (
                       <button

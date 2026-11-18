@@ -1,6 +1,7 @@
-import { useEffect, useState } from 'react';
+import { useEffect, useRef, useState } from 'react';
 import {
   CloudDownload,
+  CloudUpload,
   Download,
   FileSpreadsheet,
   LogOut,
@@ -9,6 +10,7 @@ import {
 import { Link, useNavigate } from 'react-router-dom';
 import { LoadingSplash } from '../components/LoadingSplash';
 import { apiFetch, clearAccessToken } from '../lib/api';
+import { applyFilledCsv } from '../lib/applyFilledCsv';
 import { exportBatchCsv } from '../lib/exportBatchCsv';
 import { resolveInitialRowIndex } from '../lib/initialWorkRow';
 import { clearWorkSession, setWorkSession } from '../lib/workSession';
@@ -54,8 +56,11 @@ export function UniversitiesPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<
-    'import' | 'continue' | 'sync' | 'export' | null
+    'import' | 'continue' | 'sync' | 'export' | 'export-fix' | 'apply' | null
   >(null);
+  const filledInputRef = useRef<HTMLInputElement>(null);
+  const applyUniRef = useRef<UniversityListItem | null>(null);
+  const [applyNote, setApplyNote] = useState<string | null>(null);
 
   useEffect(() => {
     let cancelled = false;
@@ -152,16 +157,46 @@ export function UniversitiesPage() {
     }
   }
 
-  async function exportCourses(uni: UniversityListItem) {
+  async function exportCourses(uni: UniversityListItem, format?: 'data-fix') {
     const staging = uni.staging;
     if (!staging) return;
     setBusyId(uni.sysUniversityId);
-    setBusyAction('export');
+    setBusyAction(format === 'data-fix' ? 'export-fix' : 'export');
     setError(null);
     try {
-      await exportBatchCsv(staging.batchId, uni.uniName);
+      await exportBatchCsv(staging.batchId, uni.uniName, format);
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Export failed');
+    } finally {
+      setBusyId(null);
+      setBusyAction(null);
+    }
+  }
+
+  function pickFilledCsv(uni: UniversityListItem) {
+    applyUniRef.current = uni;
+    filledInputRef.current?.click();
+  }
+
+  async function onFilledFile(file: File | undefined) {
+    const uni = applyUniRef.current;
+    applyUniRef.current = null;
+    const batchId = uni?.staging?.batchId;
+    if (!file || !uni || !batchId) return;
+    setBusyId(uni.sysUniversityId);
+    setBusyAction('apply');
+    setError(null);
+    setApplyNote(null);
+    try {
+      const res = await applyFilledCsv(batchId, file);
+      const skip = res.skipped.length
+        ? ` ${res.skipped.length} skipped.`
+        : '';
+      setApplyNote(
+        `Updated ${res.updated} staging rows, ${res.catalogUpdated} catalog.${skip}`,
+      );
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Apply filled CSV failed');
     } finally {
       setBusyId(null);
       setBusyAction(null);
@@ -228,6 +263,16 @@ export function UniversitiesPage() {
     );
   }
 
+  if (busyId && busyAction === 'apply') {
+    const name = universities.find((u) => u.sysUniversityId === busyId)?.uniName;
+    return (
+      <LoadingSplash
+        title="Applying filled CSV"
+        subtitle={`Updating RowEditor and catalog for ${name ?? 'university'}…`}
+      />
+    );
+  }
+
   return (
     <div className="mx-auto max-w-3xl p-6">
       <header className="mb-6 flex items-center justify-between">
@@ -257,6 +302,20 @@ export function UniversitiesPage() {
         </div>
       </header>
       {error && <p className="mb-4 text-sm font-bold text-red-600">{error}</p>}
+      {applyNote && (
+        <p className="mb-4 text-sm font-bold text-emerald-700">{applyNote}</p>
+      )}
+      <input
+        ref={filledInputRef}
+        type="file"
+        accept=".csv,text/csv"
+        className="hidden"
+        onChange={(e) => {
+          const file = e.target.files?.[0];
+          e.target.value = '';
+          void onFilledFile(file);
+        }}
+      />
 
       <section className="mb-6 rounded-lg border border-sky-200 bg-sky-50/60 p-4">
         <h2 className="text-sm font-bold uppercase tracking-wide text-sky-900">
@@ -323,22 +382,46 @@ export function UniversitiesPage() {
                   </button>
                 ) : null}
                 {staging ? (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => void exportCourses(u)}
-                    className={`inline-flex items-center gap-1.5 rounded border px-3 py-2 text-sm font-bold text-white disabled:opacity-40 ${
-                      staging.invalidRowCount > 0
-                        ? 'border-amber-600 bg-amber-600'
-                        : 'border-emerald-600 bg-emerald-600'
-                    }`}
-                    title="Download valid courses as CSV"
-                  >
-                    <Download className="h-4 w-4" aria-hidden />
-                    {busy && busyAction === 'export'
-                      ? 'Downloading…'
-                      : 'Export CSV'}
-                  </button>
+                  <>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void exportCourses(u)}
+                      className={`inline-flex items-center gap-1.5 rounded border px-3 py-2 text-sm font-bold text-white disabled:opacity-40 ${
+                        staging.invalidRowCount > 0
+                          ? 'border-amber-600 bg-amber-600'
+                          : 'border-emerald-600 bg-emerald-600'
+                      }`}
+                      title="Download valid courses as CSV"
+                    >
+                      <Download className="h-4 w-4" aria-hidden />
+                      {busy && busyAction === 'export'
+                        ? 'Downloading…'
+                        : 'Export CSV'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => void exportCourses(u, 'data-fix')}
+                      className="inline-flex items-center gap-1.5 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 disabled:opacity-40"
+                      title="All course rows (valid and invalid). Drop in DATA FIX 4_col"
+                    >
+                      <FileSpreadsheet className="h-4 w-4" aria-hidden />
+                      {busy && busyAction === 'export-fix'
+                        ? 'Downloading…'
+                        : 'Export for DATA FIX'}
+                    </button>
+                    <button
+                      type="button"
+                      disabled={busy}
+                      onClick={() => pickFilledCsv(u)}
+                      className="inline-flex items-center gap-1.5 rounded border border-emerald-300 bg-white px-3 py-2 text-sm font-bold text-emerald-800 disabled:opacity-40"
+                      title="Apply 4_col_filled CSV by courseKey"
+                    >
+                      <CloudUpload className="h-4 w-4" aria-hidden />
+                      Apply filled CSV
+                    </button>
+                  </>
                 ) : null}
                 {!staging && (
                   <button

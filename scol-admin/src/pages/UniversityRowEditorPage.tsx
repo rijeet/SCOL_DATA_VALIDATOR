@@ -6,9 +6,10 @@ import { FieldErrorTooltip } from '../components/FieldErrorTooltip';
 import { LoadingSplash } from '../components/LoadingSplash';
 import { apiFetch } from '../lib/api';
 import {
-  uploadFileToCloudinary,
-  type CloudinarySignedUpload,
-} from '../lib/cloudinaryUpload';
+  AMOUNT_TYPES,
+  commissionTypeLabel,
+  normalizeCommissionType,
+} from '../lib/amountTypes';
 import { canPublishValidRows, validRowCount } from '../lib/batches';
 import {
   adjacentInvalidIndex,
@@ -21,7 +22,9 @@ import {
 } from '../lib/prettifyJson';
 import {
   campusLinkDraft,
+  isPostPublishUniEditableField,
   isUniversityRowFieldRequired,
+  POST_PUBLISH_UNI_EDITABLE_FIELDS,
   locationLine,
   parseLocationMapHref,
   serializeCampusLifeLinks,
@@ -52,9 +55,9 @@ type BatchResponse = {
 };
 
 const GROUPS: Array<{ title: string; keys: string[] }> = [
-  { title: 'Identity', keys: ['uniName', 'countryName', 'universityType', 'establishedYear'] },
+  { title: 'Identity', keys: ['uniName', 'countryName', 'universityType', 'establishedYear', 'currRanking'] },
   { title: 'Location', keys: ['stateName', 'cityName', 'address', 'locationMapMetaData'] },
-  { title: 'Commercial', keys: ['commissionType', 'commission', 'currRanking'] },
+  { title: 'Commercial', keys: ['commissionType', 'commission'] },
   { title: 'Media', keys: ['logoUrl', 'website', 'coverImageUrl'] },
   { title: 'About', keys: ['aboutUs', 'rankingMetaData'] },
 ];
@@ -79,6 +82,84 @@ const LABELS: Record<string, string> = {
   currRanking: 'Ranking',
 };
 
+const COMMISSION_KEYS = ['commissionType', 'commission'] as const;
+
+const UNIVERSITY_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+const UNIVERSITY_IMAGE_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+] as const;
+type UniversityImageMimeType = (typeof UNIVERSITY_IMAGE_MIME_TYPES)[number];
+
+function universityImageMime(file: File): UniversityImageMimeType | null {
+  const type = file.type.toLowerCase();
+  if (type === 'image/jpg') return 'image/jpeg';
+  if (
+    UNIVERSITY_IMAGE_MIME_TYPES.includes(type as UniversityImageMimeType)
+  ) {
+    return type as UniversityImageMimeType;
+  }
+  const ext = file.name.split('.').pop()?.toLowerCase() ?? '';
+  if (ext === 'jpg' || ext === 'jpeg') return 'image/jpeg';
+  if (ext === 'png') return 'image/png';
+  if (ext === 'webp') return 'image/webp';
+  return null;
+}
+
+function universityImageFileName(
+  file: File,
+  mimeType: UniversityImageMimeType,
+): string {
+  const name = file.name.trim();
+  const ext = name.split('.').pop()?.toLowerCase() ?? '';
+  if (ext === 'jpg' || ext === 'jpeg' || ext === 'png' || ext === 'webp') {
+    return name;
+  }
+  const mapped =
+    mimeType === 'image/png' ? 'png' : mimeType === 'image/webp' ? 'webp' : 'jpg';
+  return `${name || 'image'}.${mapped}`;
+}
+
+type UniversityImageUploadTicket = {
+  uploadUrl: string;
+  storageKey: string;
+  headers: Record<string, string>;
+};
+
+type UniversityImageConfirmResponse = {
+  fileUrl: string;
+};
+
+function omitCommissionFields(
+  fields: Record<string, string>,
+): Record<string, string> {
+  const next = { ...fields };
+  delete next.commissionType;
+  delete next.commission;
+  return next;
+}
+
+function LockedField({
+  label,
+  value,
+  className = '',
+}: {
+  label: string;
+  value: string;
+  className?: string;
+}) {
+  const text = (value ?? '').trim();
+  return (
+    <div className={`block text-sm font-bold text-slate-500 ${className}`}>
+      {label}
+      <p className="mt-1 whitespace-pre-wrap rounded bg-slate-100 px-2 py-1.5 text-sm font-medium text-slate-500">
+        {text || '—'}
+      </p>
+    </div>
+  );
+}
+
 export function UniversityRowEditorPage() {
   const navigate = useNavigate();
   const { batchId, rowIndex } = useParams();
@@ -90,6 +171,11 @@ export function UniversityRowEditorPage() {
   const [publishing, setPublishing] = useState(false);
   const [confirmPublish, setConfirmPublish] = useState(false);
   const [publishError, setPublishError] = useState<string | null>(null);
+  const [commissionConfirm, setCommissionConfirm] = useState<
+    null | 'first' | 'second'
+  >(null);
+  const [commissionSaving, setCommissionSaving] = useState(false);
+  const [commissionError, setCommissionError] = useState<string | null>(null);
   const [coverFailed, setCoverFailed] = useState(false);
   const [logoFailed, setLogoFailed] = useState(false);
   const [imageUploading, setImageUploading] = useState<'logo' | 'cover' | null>(
@@ -179,12 +265,22 @@ export function UniversityRowEditorPage() {
   }, [load, navigate]);
 
   async function save(fields: Record<string, string>) {
-    if (!batchId || catalogPublished) return;
+    if (!batchId) return;
     setSaveState('saving');
     try {
+      const payload = omitCommissionFields(
+        catalogPublished
+          ? Object.fromEntries(
+              POST_PUBLISH_UNI_EDITABLE_FIELDS.map((key) => [
+                key,
+                fields[key] ?? '',
+              ]),
+            )
+          : fields,
+      );
       const r = await apiFetch<RowResponse>(
         `/data-entry/batches/${batchId}/rows/${idx}`,
-        { method: 'PATCH', body: JSON.stringify({ fields }) },
+        { method: 'PATCH', body: JSON.stringify({ fields: payload }) },
       );
       setRow(r);
       setSaveState('saved');
@@ -201,11 +297,43 @@ export function UniversityRowEditorPage() {
     }
   }
 
+  async function saveCommission() {
+    if (!batchId) return;
+    setCommissionSaving(true);
+    setCommissionError(null);
+    try {
+      const r = await apiFetch<RowResponse>(
+        `/data-entry/batches/${batchId}/rows/${idx}`,
+        {
+          method: 'PATCH',
+          body: JSON.stringify({
+            fields: {
+              commissionType: draft.commissionType ?? '',
+              commission: draft.commission ?? '',
+            },
+          }),
+        },
+      );
+      setRow(r);
+      setCommissionConfirm(null);
+      updateWorkSessionRow(idx);
+    } catch (e) {
+      setCommissionError(
+        e instanceof Error ? e.message : 'Commission update failed',
+      );
+    } finally {
+      setCommissionSaving(false);
+    }
+  }
+
   function setField(key: string, value: string) {
     const next = { ...draft, [key]: value };
     setDraft(next);
     if (key === 'coverImageUrl') setCoverFailed(false);
     if (key === 'logoUrl') setLogoFailed(false);
+    if (COMMISSION_KEYS.includes(key as (typeof COMMISSION_KEYS)[number])) {
+      return;
+    }
     if (saveTimer.current) clearTimeout(saveTimer.current);
     saveTimer.current = setTimeout(() => {
       void save(next);
@@ -227,31 +355,63 @@ export function UniversityRowEditorPage() {
     kind: 'logo' | 'cover',
     file: File,
   ) {
-    if (!batchId || catalogPublished) return;
+    if (!batchId) return;
     const uniName = (draft.uniName ?? '').trim();
     if (!uniName) return;
     setImageUploading(kind);
     setImageUploadError(null);
     try {
-      const signed = await apiFetch<CloudinarySignedUpload>(
+      const mimeType = universityImageMime(file);
+      if (!mimeType) {
+        throw new Error('Use a JPEG, PNG, or WebP image.');
+      }
+      if (file.size < 1 || file.size > UNIVERSITY_IMAGE_MAX_BYTES) {
+        throw new Error('Image must be 5 MB or smaller.');
+      }
+      const ticket = await apiFetch<UniversityImageUploadTicket>(
         `/data-entry/batches/${batchId}/university-image-upload-url`,
         {
           method: 'POST',
           body: JSON.stringify({
             kind,
             uniName,
-            fileName: file.name,
+            fileName: universityImageFileName(file, mimeType),
             fileSizeBytes: file.size,
+            mimeType,
           }),
         },
       );
-      const uploaded = await uploadFileToCloudinary(file, signed);
-      if (!uploaded.secureUrl) {
-        throw new Error('Cloudinary did not return an image URL');
+      if (!ticket.uploadUrl) {
+        throw new Error('The server did not return an upload URL.');
+      }
+      const put = await fetch(ticket.uploadUrl, {
+        method: 'PUT',
+        headers: {
+          'Content-Type': mimeType,
+          ...(ticket.headers ?? {}),
+        },
+        body: file,
+      });
+      if (!put.ok) {
+        throw new Error(`Upload failed (${put.status}). Please try again.`);
+      }
+      const confirmed = await apiFetch<UniversityImageConfirmResponse>(
+        `/data-entry/batches/${batchId}/university-image-confirm`,
+        {
+          method: 'POST',
+          body: JSON.stringify({
+            kind,
+            uniName,
+            storageKey: ticket.storageKey,
+          }),
+        },
+      );
+      if (!confirmed.fileUrl) {
+        throw new Error('Confirm did not return an image URL');
       }
       setField(
         kind === 'logo' ? 'logoUrl' : 'coverImageUrl',
-        uploaded.secureUrl,
+        confirmed.fileUrl,
       );
     } catch (e) {
       setImageUploadError({
@@ -300,6 +460,13 @@ export function UniversityRowEditorPage() {
   const rowInvalid = row ? !row.isValid : false;
   const rankingJsonError = getJsonParseError(draft.rankingMetaData ?? '');
   const campusError = row?.fieldErrors.campusLifeLinks;
+  const commissionDirty = Boolean(
+    row &&
+      ((draft.commissionType ?? '').trim() !==
+        (row.fields.commissionType ?? '').trim() ||
+        (draft.commission ?? '').trim() !==
+          (row.fields.commission ?? '').trim()),
+  );
 
   if (showSplash || !row || !batch) {
     return (
@@ -381,7 +548,9 @@ export function UniversityRowEditorPage() {
           </button>
         )}
         {catalogPublished && (
-          <span className="text-sm font-bold text-emerald-700">Published</span>
+          <span className="text-sm font-bold text-emerald-700">
+            Published · uni info editable
+          </span>
         )}
         <span className="text-sm font-medium text-slate-500">
           {saveState === 'saving'
@@ -425,9 +594,21 @@ export function UniversityRowEditorPage() {
       )}
 
       <div className="mx-auto flex w-full max-w-4xl flex-1 flex-col gap-4 overflow-y-auto p-4">
-        {rowInvalid && (
+        {catalogPublished && (
+          <p className="rounded-md border border-slate-200 bg-slate-100 px-3 py-2 text-sm font-medium text-slate-600">
+            Name, country, state, and city are locked. Other university
+            info still saves to the catalog. Changing Commission type or
+            Commission updates every course under this university.
+          </p>
+        )}
+        {rowInvalid && !catalogPublished && (
           <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-800">
             This row is invalid. Red fields must be fixed before publish.
+          </p>
+        )}
+        {rowInvalid && catalogPublished && (
+          <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-sm font-bold text-red-800">
+            Fix the red fields to save this university info to the catalog.
           </p>
         )}
 
@@ -540,8 +721,7 @@ export function UniversityRowEditorPage() {
           {campusError ? (
             <p className="mb-3 text-sm font-bold text-red-700">{campusError}</p>
           ) : null}
-          <fieldset disabled={catalogPublished} className="contents">
-            <div className="grid gap-4 sm:grid-cols-2">
+          <div className="grid gap-4 sm:grid-cols-2">
               {campusDraft.map((url, i) => {
                 const vid = youTubeId(url);
                 return (
@@ -608,11 +788,9 @@ export function UniversityRowEditorPage() {
               <Plus className="h-4 w-4" aria-hidden />
               Add video
             </button>
-          </fieldset>
         </section>
 
         <form className="flex flex-col gap-4" onSubmit={(e) => e.preventDefault()}>
-          <fieldset disabled={catalogPublished} className="contents">
             {GROUPS.map((group) => (
               <section
                 key={group.title}
@@ -626,11 +804,67 @@ export function UniversityRowEditorPage() {
                     const required = isUniversityRowFieldRequired(key);
                     const err = row.fieldErrors[key];
                     const tall = key === 'aboutUs' || key === 'locationMapMetaData';
+                    const fieldLocked =
+                      catalogPublished && !isPostPublishUniEditableField(key);
+                    if (fieldLocked) {
+                      return (
+                        <LockedField
+                          key={key}
+                          label={LABELS[key] ?? key}
+                          value={draft[key] ?? ''}
+                          className={
+                            key === 'coverImageUrl' ||
+                            key === 'aboutUs' ||
+                            key === 'locationMapMetaData' ||
+                            key === 'rankingMetaData'
+                              ? 'sm:col-span-2'
+                              : ''
+                          }
+                        />
+                      );
+                    }
+                    if (key === 'commissionType') {
+                      const selected =
+                        normalizeCommissionType(draft[key] ?? '') ?? '';
+                      return (
+                        <label
+                          key={key}
+                          className="block text-sm font-bold text-slate-700"
+                        >
+                          {LABELS[key] ?? key}
+                          {required ? (
+                            <span className="ml-0.5 text-red-600">*</span>
+                          ) : null}
+                          <FieldErrorTooltip
+                            fieldKey={key}
+                            message={err}
+                            required={required}
+                          >
+                            <select
+                              value={selected}
+                              onChange={(e) => setField(key, e.target.value)}
+                              className={`mt-1 w-full rounded border px-2 py-1 text-sm font-medium ${
+                                err
+                                  ? 'border-red-500 bg-red-50 text-red-950'
+                                  : 'border-slate-300'
+                              }`}
+                            >
+                              <option value="">Select type</option>
+                              {AMOUNT_TYPES.map((opt) => (
+                                <option key={opt.typeCode} value={opt.typeCode}>
+                                  {opt.typeName}
+                                </option>
+                              ))}
+                            </select>
+                          </FieldErrorTooltip>
+                        </label>
+                      );
+                    }
                     if (key === 'logoUrl' || key === 'coverImageUrl') {
                       const kind = key === 'logoUrl' ? 'logo' : 'cover';
                       const hasName = Boolean((draft.uniName ?? '').trim());
                       const busy = imageUploading === kind;
-                      const blocked = !hasName || catalogPublished || busy;
+                      const blocked = !hasName || busy;
                       const hasUrl = Boolean((draft[key] ?? '').trim());
                       const cta = busy
                         ? 'Uploading…'
@@ -649,11 +883,11 @@ export function UniversityRowEditorPage() {
                           }`}
                         >
                           {LABELS[key]}
-                          <span className="ml-0.5 text-red-600">*</span>
+                          {required ? <span className="ml-0.5 text-red-600">*</span> : null}
                           <FieldErrorTooltip
                             fieldKey={key}
                             message={err}
-                            required
+                            required={required}
                           >
                             <input
                               value={draft[key] ?? ''}
@@ -704,11 +938,11 @@ export function UniversityRowEditorPage() {
                             <span className="text-xs font-medium text-slate-500">
                               {blocked && !hasName
                                 ? 'Add the university name first, then upload an image.'
-                                : 'JPG, PNG, WebP, or GIF. Click or drop a file — the URL fills in for you.'}
+                                : 'JPEG, PNG, or WebP, up to 5 MB. Click or drop a file — the URL fills in for you.'}
                             </span>
                             <input
                               type="file"
-                              accept=".jpg,.jpeg,.png,.webp,.gif,image/jpeg,image/png,image/webp,image/gif"
+                              accept=".jpg,.jpeg,.png,.webp,image/jpeg,image/png,image/webp"
                               className="sr-only"
                               disabled={blocked}
                               onChange={(e) => {
@@ -803,12 +1037,66 @@ export function UniversityRowEditorPage() {
                     );
                   })}
                 </div>
+                {group.title === 'Commercial' && (
+                  <div className="mt-4 flex flex-wrap items-center gap-3">
+                    <button
+                      type="button"
+                      disabled={!commissionDirty || commissionSaving}
+                      onClick={() => {
+                        setCommissionError(null);
+                        setCommissionConfirm('first');
+                      }}
+                      className="rounded bg-emerald-700 px-3 py-1.5 text-sm font-bold text-white disabled:opacity-50"
+                    >
+                      {commissionSaving ? 'Updating…' : 'Update commission'}
+                    </button>
+                    <span className="text-xs font-medium text-slate-500">
+                      Not auto-saved. Overwrites commission on every course at
+                      this university.
+                    </span>
+                  </div>
+                )}
               </section>
             ))}
-          </fieldset>
         </form>
       </div>
 
+      <ConfirmDialog
+        open={commissionConfirm === 'first'}
+        title="Update commission?"
+        confirmLabel="Continue"
+        cancelLabel="Cancel"
+        tone="primary"
+        busy={false}
+        error={null}
+        onCancel={() => setCommissionConfirm(null)}
+        onConfirm={() => setCommissionConfirm('second')}
+      >
+        Change commission to{' '}
+        {commissionTypeLabel(draft.commissionType) || '—'} /{' '}
+        {(draft.commission ?? '').trim() || '—'} for{' '}
+        {draft.uniName || 'this university'}? You will confirm once more.
+      </ConfirmDialog>
+      <ConfirmDialog
+        open={commissionConfirm === 'second'}
+        title="Apply to all courses?"
+        confirmLabel="Update all courses"
+        busyLabel="Updating…"
+        cancelLabel="Back"
+        tone="danger"
+        busy={commissionSaving}
+        error={commissionError}
+        onCancel={() => {
+          if (!commissionSaving) {
+            setCommissionConfirm('first');
+            setCommissionError(null);
+          }
+        }}
+        onConfirm={() => void saveCommission()}
+      >
+        This overwrites commission on every course under this university. The
+        course editor cannot change it. Export CSV will show the new amount.
+      </ConfirmDialog>
       <ConfirmDialog
         open={confirmPublish}
         title="Publish universities?"
