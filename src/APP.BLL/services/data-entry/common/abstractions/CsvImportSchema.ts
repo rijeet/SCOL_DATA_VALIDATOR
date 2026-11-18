@@ -4,6 +4,8 @@
 export interface CsvImportSchema {
   /** CSV must contain all these headers; extra columns allowed. */
   inputHeaders: string[];
+  /** Headers required on import. Defaults to inputHeaders when omitted. */
+  requiredHeaders?: string[];
   /** Exact column order for the reviewed output CSV. */
   reviewedHeaders: string[];
   /** Exact column order for the errors output CSV. */

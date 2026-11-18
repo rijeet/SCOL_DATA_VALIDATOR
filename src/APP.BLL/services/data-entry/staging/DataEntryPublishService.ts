@@ -13,6 +13,7 @@ import { DataEntryBatchType } from '@shared/enums/DataEntryBatchType.enum';
 import { DataEntryCatalogLookup } from './DataEntryCatalogLookup';
 import { DataEntryGeoLookup } from './DataEntryGeoLookup';
 import { publishStagingRowToCatalog } from './publishStagingRowToCatalog';
+import { ensureCourseKeys } from './assignCourseKeys';
 import { publishUniversityLevelReqs } from './publishUniversityLevelReqs';
 import {
   publishUniversityRowToCatalog,
@@ -202,11 +203,16 @@ export class DataEntryPublishService {
     const skipped = Math.max(0, batch.rowCount - rows.length);
 
     await this.db.transaction(async (manager) => {
+      await ensureCourseKeys(manager, batch);
       const lookup = new DataEntryCatalogLookup(manager);
       const fieldsByUni = new Map<string, Record<string, string>[]>();
       const publishedCourseIdsByUni = new Map<string, string[]>();
+      const liveRows = await manager.find(DataEntryCourseRows, {
+        where: { batchId: batch.id, isValid: true },
+        order: { rowIndex: 'ASC' },
+      });
 
-      for (const row of rows) {
+      for (const row of liveRows) {
         const uniId = await this.resolveRowUniversityId(
           manager,
           batch,

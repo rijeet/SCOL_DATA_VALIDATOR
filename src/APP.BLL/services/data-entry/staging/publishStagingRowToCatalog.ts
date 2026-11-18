@@ -12,6 +12,7 @@ import {
 } from '../course/parsers/courseCsvFieldParsers';
 import { parseMetaDataItems } from '../common/engine/MetaDataParser';
 import type { DataEntryCatalogLookup } from './DataEntryCatalogLookup';
+import { normalizeCommissionType } from '@shared/constants/amountTypes.constants';
 
 const ENGLISH_COLUMNS = [
   { test: 'IELTS', overall: 'ieltsMinOverall', section: 'ieltsMinSection' },
@@ -57,7 +58,14 @@ export async function publishStagingRowToCatalog(
     );
   }
 
-  const courseFields = {
+  const courseKey = (fields.courseKey ?? '').trim().toLowerCase() || undefined;
+
+  const courseFields: Partial<UniCourses> & {
+    uniId: string;
+    sysProgrammeId: string;
+    sysDegreeId: string;
+    courseName: string;
+  } = {
     uniId,
     sysProgrammeId: programmeId,
     sysDegreeId: degreeId,
@@ -71,16 +79,28 @@ export async function publishStagingRowToCatalog(
       undefined,
     externalUrl: (fields.courseUrlExternal ?? '').trim() || undefined,
   };
+  if (courseKey) courseFields.courseKey = courseKey;
 
-  let course = await manager
-    .createQueryBuilder(UniCourses, 'c')
-    .where('c.uniId = :uniId', { uniId })
-    .andWhere('lower(trim(c.courseName)) = :name', {
-      name: courseName.toLowerCase(),
-    })
-    .andWhere('c.sysDegreeId = :degreeId', { degreeId })
-    .andWhere('c.deletedAt IS NULL')
-    .getOne();
+  let course: UniCourses | null = null;
+  if (courseKey) {
+    course = await manager
+      .createQueryBuilder(UniCourses, 'c')
+      .where('c.uniId = :uniId', { uniId })
+      .andWhere('lower(trim(c.courseKey)) = :courseKey', { courseKey })
+      .andWhere('c.deletedAt IS NULL')
+      .getOne();
+  }
+  if (!course) {
+    course = await manager
+      .createQueryBuilder(UniCourses, 'c')
+      .where('c.uniId = :uniId', { uniId })
+      .andWhere('lower(trim(c.courseName)) = :name', {
+        name: courseName.toLowerCase(),
+      })
+      .andWhere('c.sysDegreeId = :degreeId', { degreeId })
+      .andWhere('c.deletedAt IS NULL')
+      .getOne();
+  }
 
   if (course) {
     Object.assign(course, courseFields);
@@ -148,7 +168,9 @@ export async function publishStagingRowToCatalog(
           courseIntakeId: intakeEntity.id,
           name: scholarshipName,
           amount: parseOptionalDecimal(fields.scholarshipAmount ?? ''),
-          amountType: (fields.scholarshipType ?? '').trim() || undefined,
+          amountType:
+            normalizeCommissionType(fields.scholarshipType) ??
+            ((fields.scholarshipType ?? '').trim() || undefined),
           isActive: true,
         }),
       );

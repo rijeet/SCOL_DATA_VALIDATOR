@@ -1,4 +1,6 @@
 import type { CsvRow } from '../common/abstractions/CsvImportProcessor';
+import { normalizeCommissionType } from '@shared/constants/amountTypes.constants';
+import { canonicalEntryDegreeName } from '@shared/constants/degreeSeeds.constants';
 import { CourseImportSchema } from '../course/CourseImportSchema';
 import {
   DATA_ENTRY_HELPER_CLOUD_PATHS,
@@ -23,5 +25,11 @@ export function normalizeStagingCourseRow(row: CsvRow): Record<string, string> {
     const v = row[key];
     out[key] = typeof v === 'string' ? v.trim() : v == null ? '' : String(v);
   }
+  const scholarshipType = normalizeCommissionType(out.scholarshipType);
+  if (scholarshipType) out.scholarshipType = scholarshipType;
+  const minDeg = canonicalEntryDegreeName(out.minDegreeName);
+  if (minDeg) out.minDegreeName = minDeg;
+  const highDeg = canonicalEntryDegreeName(out.higherDegreeName);
+  if (highDeg) out.higherDegreeName = highDeg;
   return out;
 }

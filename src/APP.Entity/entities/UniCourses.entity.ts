@@ -29,6 +29,7 @@ import { MetaDataItem } from '@shared/types/MetaDataItem.type';
 @Index('IX_UniCourses_uniId', ['uniId'])
 @Index('IX_UniCourses_sysProgrammeId', ['sysProgrammeId'])
 @Index('IX_UniCourses_courseName', ['courseName'])
+@Index('IX_UniCourses_courseKey', ['courseKey'])
 export class UniCourses extends BaseEntity {
   @Column({
     name: 'uniId',
@@ -115,6 +116,16 @@ export class UniCourses extends BaseEntity {
   })
   @AutoMap()
   externalUrl?: string;
+
+  /** Stable CSV/catalog identity. Not the course URL. */
+  @Column({
+    name: 'courseKey',
+    type: 'varchar',
+    length: 180,
+    nullable: true,
+  })
+  @AutoMap()
+  courseKey?: string | null;
 
   // ========================================
   // Navigation Properties (EF Core style)
