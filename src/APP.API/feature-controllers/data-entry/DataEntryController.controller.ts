@@ -31,11 +31,17 @@ import { DataEntryPublishService } from '@bll/services/data-entry/staging/DataEn
 import { DataEntryUploadService } from '@bll/services/data-entry/staging/DataEntryUploadService';
 import { DataEntryDashboardService } from '@bll/services/data-entry/staging/DataEntryDashboardService';
 import { DataEntryExportService } from '@bll/services/data-entry/staging/DataEntryExportService';
+import { DataEntryApplyFilledService } from '@bll/services/data-entry/staging/DataEntryApplyFilledService';
+import { GenerateApplyFilledUploadUrlRequestDto } from '@shared/dtos/data-entry/GenerateApplyFilledUploadUrlRequestDto';
 import { CreateDataEntryBatchRequestDto } from '@shared/dtos/data-entry/CreateDataEntryBatchRequestDto';
 import { UpdateDataEntryRowRequestDto } from '@shared/dtos/data-entry/UpdateDataEntryRowRequestDto';
 import { GenerateDataEntryUploadUrlRequestDto } from '@shared/dtos/data-entry/GenerateDataEntryUploadUrlRequestDto';
+import { ConfirmUniversityImageUploadRequestDto } from '@shared/dtos/data-entry/ConfirmUniversityImageUploadRequestDto';
 import { GenerateUniversityImageUploadUrlRequestDto } from '@shared/dtos/data-entry/GenerateUniversityImageUploadUrlRequestDto';
+import { RemapDashboardEntryDegreesRequestDto } from '@shared/dtos/data-entry/RemapDashboardEntryDegreesRequestDto';
 import { RemapDashboardIntakesRequestDto } from '@shared/dtos/data-entry/RemapDashboardIntakesRequestDto';
+import { RemapDashboardScholarshipsRequestDto } from '@shared/dtos/data-entry/RemapDashboardScholarshipsRequestDto';
+import { RenameDashboardProgrammeRequestDto } from '@shared/dtos/data-entry/RenameDashboardProgrammeRequestDto';
 import {
   DATA_ENTRY_HELPER_KEYS,
   type DataEntryHelperKey,
@@ -53,6 +59,7 @@ export class DataEntryController {
     private readonly upload: DataEntryUploadService,
     private readonly dashboard: DataEntryDashboardService,
     private readonly exportService: DataEntryExportService,
+    private readonly applyFilled: DataEntryApplyFilledService,
   ) {}
 
   @Get('destinations')
@@ -83,6 +90,18 @@ export class DataEntryController {
     return this.dashboard.getSnapshot();
   }
 
+  @Get('dashboard/degrees/:degreeId/courses')
+  @ApiOperation({
+    summary:
+      'Catalog courses for an awarded degree, with staging row links when present',
+  })
+  listDashboardDegreeCourses(
+    @Param('degreeId', ParseUUIDPipe) degreeId: string,
+    @Query('countryId') countryId?: string,
+  ) {
+    return this.dashboard.listCoursesForDegree(degreeId, countryId);
+  }
+
   @Post('dashboard/refresh')
   @ApiOperation({
     summary: 'Rebuild dashboard snapshot from catalog tables',
@@ -98,6 +117,37 @@ export class DataEntryController {
   })
   remapDashboardIntakes(@Body() dto: RemapDashboardIntakesRequestDto) {
     return this.dashboard.remapIntakes(dto);
+  }
+
+  @Post('dashboard/courses/entry-degrees')
+  @ApiOperation({
+    summary:
+      'Change min/high entry degrees for every matching course at a university',
+  })
+  remapDashboardEntryDegrees(
+    @Body() dto: RemapDashboardEntryDegreesRequestDto,
+  ) {
+    return this.dashboard.remapEntryDegrees(dto);
+  }
+
+  @Post('dashboard/programmes/rename')
+  @ApiOperation({
+    summary:
+      'Rename a programme for every university that uses it (merge if the name exists)',
+  })
+  renameDashboardProgramme(@Body() dto: RenameDashboardProgrammeRequestDto) {
+    return this.dashboard.renameProgramme(dto);
+  }
+
+  @Post('dashboard/scholarships/remap')
+  @ApiOperation({
+    summary:
+      'Assign or change a scholarship for matching courses at a university',
+  })
+  remapDashboardScholarships(
+    @Body() dto: RemapDashboardScholarshipsRequestDto,
+  ) {
+    return this.dashboard.remapScholarships(dto);
   }
 
   @Get('universities')
@@ -140,13 +190,25 @@ export class DataEntryController {
   @Post('batches/:batchId/university-image-upload-url')
   @ApiOperation({
     summary:
-      'Signed Cloudinary image upload for university logo or cover (browser uploads the file)',
+      'Presigned PUT URL for university logo or cover on the public scol-assets bucket',
   })
   generateUniversityImageUploadUrl(
     @Param('batchId', ParseUUIDPipe) batchId: string,
     @Body() dto: GenerateUniversityImageUploadUrlRequestDto,
   ) {
     return this.upload.generateUniversityImageUploadUrl(batchId, dto);
+  }
+
+  @Post('batches/:batchId/university-image-confirm')
+  @ApiOperation({
+    summary:
+      'HEAD the uploaded logo/cover in scol-assets and return the public file URL',
+  })
+  confirmUniversityImageUpload(
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+    @Body() dto: ConfirmUniversityImageUploadRequestDto,
+  ) {
+    return this.upload.confirmUniversityImageUpload(batchId, dto);
   }
 
   @Post('batches/:batchId/confirm-upload')
@@ -200,17 +262,40 @@ export class DataEntryController {
   @Get('batches/:batchId/export.csv')
   @ApiProduces('text/csv')
   @ApiOperation({
-    summary: 'Stream valid staging rows as RFC 4180 CSV (valid rows only)',
+    summary:
+      'Stream staging CSV. Default: valid rows only. DATA_ENTRY_EXPORT_ALL_ROWS=true exports every row. format=data-fix: all course rows.',
   })
   async exportValidCsv(
     @Param('batchId', ParseUUIDPipe) batchId: string,
+    @Query('format') format?: string,
   ): Promise<StreamableFile> {
     const { stream, filename } =
-      await this.exportService.openValidCsvStream(batchId);
+      await this.exportService.openValidCsvStream(batchId, format);
     return new StreamableFile(stream, {
       type: 'text/csv; charset=utf-8',
       disposition: `attachment; filename="${filename}"`,
     });
+  }
+
+  @Post('batches/:batchId/apply-filled-upload-url')
+  @ApiOperation({
+    summary:
+      'Signed Cloudinary upload for a DATA FIX 4_col_filled CSV (does not replace the batch)',
+  })
+  generateApplyFilledUploadUrl(
+    @Param('batchId', ParseUUIDPipe) batchId: string,
+    @Body() dto: GenerateApplyFilledUploadUrlRequestDto,
+  ) {
+    return this.applyFilled.generateUploadUrl(batchId, dto);
+  }
+
+  @Post('batches/:batchId/apply-filled-confirm')
+  @ApiOperation({
+    summary:
+      'Read the uploaded 4_col_filled CSV and patch staging + catalog by courseKey',
+  })
+  confirmApplyFilled(@Param('batchId', ParseUUIDPipe) batchId: string) {
+    return this.applyFilled.confirmAndApply(batchId);
   }
 
   @Get('batches/:batchId/invalid-rows')
@@ -263,10 +348,14 @@ export class DataEntryController {
   @ApiOperation({ summary: 'Batch metadata (counts, status, university key)' })
   async getBatch(@Param('batchId') batchId: string) {
     const batch = await this.staging.getBatch(batchId);
+    const uniCommission =
+      await this.staging.getUniversityCommissionForBatch(batch);
     return {
       ...batch,
       countryCode: batch.SysCountry?.countryCode ?? null,
       countryName: batch.SysCountry?.countryName ?? null,
+      uniCommission: uniCommission?.commission ?? null,
+      uniCommissionType: uniCommission?.commissionType ?? null,
     };
   }
 
