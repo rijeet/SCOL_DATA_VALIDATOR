@@ -1,6 +1,6 @@
 import type { EntityManager } from 'typeorm';
 import { SysUniversities } from '@entity/entities/SysUniversities.entity';
-import { CommissionType } from '@shared/enums/CommissionType.enum';
+import { normalizeCommissionType } from '@shared/constants/amountTypes.constants';
 import { parseMetaDataItems } from '../common/engine/MetaDataParser';
 import { parseOptionalDecimal } from '../course/parsers/courseCsvFieldParsers';
 import type { DataEntryGeoLookup } from './DataEntryGeoLookup';
@@ -46,32 +46,12 @@ export async function publishUniversityRowToCatalog(
       : undefined;
   }
 
-  const commissionTypeRaw = (fields.commissionType ?? '').trim().toUpperCase();
-  const commissionType =
-    commissionTypeRaw === CommissionType.AMOUNT
-      ? CommissionType.AMOUNT
-      : commissionTypeRaw === CommissionType.PERCENTAGE
-        ? CommissionType.PERCENTAGE
-        : undefined;
-
   const payload: Partial<SysUniversities> = {
     uniName,
     sysCountryId: countryId,
     sysStateId: stateId,
     sysCityId: cityId,
-    address: (fields.address ?? '').trim() || undefined,
-    commissionType,
-    commission: parseOptionalDecimal(fields.commission ?? ''),
-    logoUrl: (fields.logoUrl ?? '').trim() || undefined,
-    website: (fields.website ?? '').trim() || undefined,
-    aboutUs: (fields.aboutUs ?? '').trim() || undefined,
-    coverImageUrl: (fields.coverImageUrl ?? '').trim() || undefined,
-    campusLifeLinks: parseQuotedUrlList(fields.campusLifeLinks ?? ''),
-    rankingMetaData: parseMetaDataItems(fields.rankingMetaData ?? '') ?? undefined,
-    locationMapMetaData: (fields.locationMapMetaData ?? '').trim() || undefined,
-    establishedYear: parseOptionalInt(fields.establishedYear ?? ''),
-    universityType: (fields.universityType ?? '').trim() || undefined,
-    currRanking: parseOptionalInt(fields.currRanking ?? ''),
+    ...universityInfoFieldsFromStaging(fields),
   };
 
   const existing = await geo.universityByName(uniName);
@@ -88,6 +68,49 @@ export async function publishUniversityRowToCatalog(
   );
   geo.rememberUniversity(uniName, created.id);
   return { inserted: true, universityId: created.id };
+}
+
+/** Catalog column values for post-publish uni-info edits. Empty staging cells become NULL. */
+export function universityCatalogInfoUpdate(
+  fields: Record<string, string>,
+): Record<string, string | number | string[] | object | null | undefined> {
+  const patch = universityInfoFieldsFromStaging(fields);
+  return {
+    address: patch.address ?? null,
+    commissionType: patch.commissionType ?? null,
+    commission: patch.commission ?? null,
+    website: patch.website ?? null,
+    aboutUs: patch.aboutUs ?? null,
+    logoUrl: patch.logoUrl ?? null,
+    coverImageUrl: patch.coverImageUrl ?? null,
+    campusLifeLinks: patch.campusLifeLinks ?? null,
+    rankingMetaData: patch.rankingMetaData ?? null,
+    locationMapMetaData: patch.locationMapMetaData ?? null,
+    establishedYear: patch.establishedYear ?? null,
+    universityType: patch.universityType ?? null,
+    currRanking: patch.currRanking ?? null,
+  };
+}
+
+function universityInfoFieldsFromStaging(
+  fields: Record<string, string>,
+): Partial<SysUniversities> {
+  const commissionType = normalizeCommissionType(fields.commissionType) ?? undefined;
+  return {
+    address: (fields.address ?? '').trim() || undefined,
+    commissionType,
+    commission: parseOptionalDecimal(fields.commission ?? ''),
+    website: (fields.website ?? '').trim() || undefined,
+    aboutUs: (fields.aboutUs ?? '').trim() || undefined,
+    logoUrl: (fields.logoUrl ?? '').trim() || undefined,
+    coverImageUrl: (fields.coverImageUrl ?? '').trim() || undefined,
+    campusLifeLinks: parseQuotedUrlList(fields.campusLifeLinks ?? ''),
+    rankingMetaData: parseMetaDataItems(fields.rankingMetaData ?? '') ?? undefined,
+    locationMapMetaData: (fields.locationMapMetaData ?? '').trim() || undefined,
+    establishedYear: parseOptionalInt(fields.establishedYear ?? ''),
+    universityType: (fields.universityType ?? '').trim() || undefined,
+    currRanking: parseOptionalInt(fields.currRanking ?? ''),
+  };
 }
 
 export async function seedUniApplicationStages(

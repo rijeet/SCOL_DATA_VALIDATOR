@@ -1,4 +1,6 @@
 import { isCourseRowFieldRequired } from '@shared/validation/courseRowFieldValidation';
+import { POST_PUBLISH_UNI_EDITABLE_FIELDS } from '@shared/validation/universityRowFieldValidation';
+import { courseCommissionAmount } from '@shared/validation/courseCommissionAmount';
 import {
   Injectable,
   NotFoundException,
@@ -14,6 +16,7 @@ import { DataEntryCourseRows } from '@entity/entities/DataEntryCourseRows.entity
 import { DataEntryUniversityRows } from '@entity/entities/DataEntryUniversityRows.entity';
 import { SysUniversities } from '@entity/entities/SysUniversities.entity';
 import { SysCountries } from '@entity/entities/SysCountries.entity';
+import { UniCourses } from '@entity/entities/UniCourses.entity';
 import { DataEntryBatchType } from '@shared/enums/DataEntryBatchType.enum';
 import { UniversityRowValidator } from '../university/UniversityRowValidator';
 import { normalizeStagingUniversityRow } from '../university/UniversityImportSchema';
@@ -24,7 +27,16 @@ import { normalizeCourseCsvRow } from '../course/dto/CourseImportRowTypes';
 import { normalizeStagingCourseRow } from './courseStagingHeaders';
 import { DataEntryCloudCatalogService } from './DataEntryCloudCatalogService';
 import { DataEntryPublishService } from './DataEntryPublishService';
+import { DataEntryDashboardService } from './DataEntryDashboardService';
+import { DataEntryCatalogLookup } from './DataEntryCatalogLookup';
+import { universityCatalogInfoUpdate } from './publishUniversityRowToCatalog';
 import type { CsvRow } from '../common/abstractions/CsvImportProcessor';
+import type { EntityManager } from 'typeorm';
+import {
+  allocateCourseKey,
+  courseKeyBase,
+} from '@shared/constants/courseKey.constants';
+import { ensureCourseKeys } from './assignCourseKeys';
 
 @Injectable()
 export class DataEntryStagingService {
@@ -34,6 +46,7 @@ export class DataEntryStagingService {
     private readonly validator: CourseRowValidator,
     private readonly universityValidator: UniversityRowValidator,
     private readonly publish: DataEntryPublishService,
+    private readonly dashboard: DataEntryDashboardService,
   ) {}
 
   async listSysUniversitiesForDataEntry(): Promise<
@@ -142,6 +155,33 @@ export class DataEntryStagingService {
     return batch;
   }
 
+  async getUniversityCommissionForBatch(batch: DataEntryBatches): Promise<{
+    commission: string;
+    commissionType: string;
+  } | null> {
+    let uni: SysUniversities | null = null;
+    if (batch.sysUniversityId) {
+      uni = await this.db.Set(SysUniversities).findOne({
+        where: { id: batch.sysUniversityId },
+      });
+    }
+    if (!uni && batch.universityKey) {
+      uni = await this.db
+        .Set(SysUniversities)
+        .createQueryBuilder('u')
+        .where('lower(trim(u.uniName)) = :n', {
+          n: batch.universityKey.trim().toLowerCase(),
+        })
+        .andWhere('u.deletedAt IS NULL')
+        .getOne();
+    }
+    if (!uni) return null;
+    return {
+      commission: (uni.commission ?? '').toString(),
+      commissionType: uni.commissionType ?? '',
+    };
+  }
+
   async listInvalidRowIndexes(batchId: string): Promise<number[]> {
     const batch = await this.getBatch(batchId);
     const table =
@@ -229,6 +269,9 @@ export class DataEntryStagingService {
     batch.invalidRowCount = invalidCount;
     batch.status = DataEntryBatchStatus.READY;
     await this.db.Set(DataEntryBatches).save(batch);
+    await this.db.transaction(async (manager) => {
+      await ensureCourseKeys(manager, batch);
+    });
     await this.publish.markBatchValidatedIfComplete(batch.id);
 
     return batch;
@@ -262,7 +305,10 @@ export class DataEntryStagingService {
   ): Promise<DataEntryCourseRows | DataEntryUniversityRows> {
     const batch = await this.getBatch(batchId);
     if (batch.status === DataEntryBatchStatus.PUBLISHED) {
-      throw new ConflictException('Published batches cannot be edited');
+      if (batch.batchType !== DataEntryBatchType.UNIVERSITY) {
+        throw new ConflictException('Published batches cannot be edited');
+      }
+      return this.updatePublishedUniversityInfo(batch, rowIndex, fields);
     }
     if (batch.batchType === DataEntryBatchType.UNIVERSITY) {
       const row = await this.db.Set(DataEntryUniversityRows).findOne({
@@ -285,8 +331,44 @@ export class DataEntryStagingService {
       where: { batchId, rowIndex },
     });
     if (!row) throw new NotFoundException('Row not found');
-    const merged = { ...row.fields, ...fields };
+    const previousDegree = (row.fields.degreeName ?? '').trim();
+    const previousKey = (row.fields.courseKey ?? '').trim();
+    const rest = { ...fields };
+    delete rest.commission;
+    delete rest.courseKey;
+    const merged = { ...row.fields, ...rest };
+    merged.courseKey = previousKey;
+    const uniCommission = await this.getUniversityCommissionForBatch(batch);
+    if (uniCommission) {
+      merged.commission = courseCommissionAmount({
+        commissionType: uniCommission.commissionType,
+        commission: uniCommission.commission,
+        tuitionFee: merged.tuitionFee ?? '',
+      });
+    }
     const normalized = normalizeStagingCourseRow(merged as CsvRow);
+    normalized.courseKey = previousKey.toLowerCase();
+    if (!normalized.courseKey) {
+      const siblings = await this.db.Set(DataEntryCourseRows).find({
+        where: { batchId },
+        select: ['id', 'fields'],
+      });
+      const used = new Set<string>();
+      for (const s of siblings) {
+        const k = (s.fields.courseKey ?? '').trim().toLowerCase();
+        if (k) used.add(k);
+      }
+      normalized.courseKey = allocateCourseKey(
+        courseKeyBase({
+          uniName:
+            (normalized.uniName ?? '').trim() || batch.universityKey || '',
+          degreeName: normalized.degreeName ?? '',
+          courseName: normalized.courseName ?? '',
+          courseDuration: normalized.courseDuration ?? '',
+        }),
+        used,
+      );
+    }
     const courseRow = normalizeCourseCsvRow(normalized as CsvRow);
     const fieldErrors = this.validator.validateRowFieldErrors(courseRow);
     const isValid = !Object.keys(fieldErrors).some(isCourseRowFieldRequired);
@@ -298,7 +380,167 @@ export class DataEntryStagingService {
 
     await this.recomputeBatchCounts(batchId);
 
+    const nextDegree = (normalized.degreeName ?? '').trim();
+    if (
+      previousDegree &&
+      nextDegree &&
+      previousDegree.toLowerCase() !== nextDegree.toLowerCase()
+    ) {
+      await this.syncCatalogAwardedDegree(batch, {
+        courseName: normalized.courseName ?? '',
+        fromDegreeName: previousDegree,
+        toDegreeName: nextDegree,
+      });
+    }
+
     return row;
+  }
+
+  private async syncCatalogAwardedDegree(
+    batch: DataEntryBatches,
+    args: {
+      courseName: string;
+      fromDegreeName: string;
+      toDegreeName: string;
+    },
+  ): Promise<void> {
+    const courseName = args.courseName.trim();
+    if (!courseName) return;
+    const uniId =
+      batch.sysUniversityId ??
+      (
+        await this.db.Set(SysUniversities).findOne({
+          where: { uniName: batch.universityKey },
+        })
+      )?.id;
+    if (!uniId) return;
+
+    let changed = false;
+    await this.db.transaction(async (manager) => {
+      const lookup = new DataEntryCatalogLookup(manager);
+      const fromId = await lookup.degree(args.fromDegreeName);
+      const toId = await lookup.degree(args.toDegreeName);
+      const sameName = await manager
+        .createQueryBuilder(UniCourses, 'c')
+        .where('c.uniId = :uniId', { uniId })
+        .andWhere('lower(trim(c.courseName)) = :name', {
+          name: courseName.toLowerCase(),
+        })
+        .andWhere('c.deletedAt IS NULL')
+        .getMany();
+      const fromCourse = sameName.find((c) => c.sysDegreeId === fromId);
+      const toCourse = sameName.find((c) => c.sysDegreeId === toId);
+      if (fromCourse && toCourse && fromCourse.id !== toCourse.id) {
+        await manager.softDelete(UniCourses, fromCourse.id);
+        changed = true;
+        return;
+      }
+      const target = fromCourse ?? (sameName.length === 1 ? sameName[0] : null);
+      if (target && target.sysDegreeId !== toId) {
+        target.sysDegreeId = toId;
+        await manager.save(UniCourses, target);
+        changed = true;
+      }
+    });
+
+    if (changed) {
+      await this.dashboard.refresh(batch.createdByUserId ?? batch.id);
+    }
+  }
+
+  private async updatePublishedUniversityInfo(
+    batch: DataEntryBatches,
+    rowIndex: number,
+    fields: Record<string, string>,
+  ): Promise<DataEntryUniversityRows> {
+    const row = await this.db.Set(DataEntryUniversityRows).findOne({
+      where: { batchId: batch.id, rowIndex },
+    });
+    if (!row) throw new NotFoundException('Row not found');
+
+    const allowed: Record<string, string> = {};
+    for (const key of POST_PUBLISH_UNI_EDITABLE_FIELDS) {
+      if (Object.prototype.hasOwnProperty.call(fields, key)) {
+        allowed[key] = fields[key] ?? '';
+      }
+    }
+    const previousCommission = (row.fields.commission ?? '').trim();
+    const previousType = (row.fields.commissionType ?? '').trim().toLowerCase();
+    const merged = { ...row.fields, ...allowed };
+    const normalized = normalizeStagingUniversityRow(merged);
+    const fieldErrors =
+      this.universityValidator.validateRowFieldErrors(normalized);
+    row.fields = normalized;
+    row.fieldErrors = fieldErrors;
+    row.isValid = this.universityValidator.isRowValid(fieldErrors);
+    const commissionChanged =
+      previousCommission !== (normalized.commission ?? '').trim() ||
+      previousType !== (normalized.commissionType ?? '').trim().toLowerCase();
+
+    await this.db.transaction(async (manager) => {
+      await manager.save(DataEntryUniversityRows, row);
+      if (!row.isValid) return;
+      const uniName = (normalized.uniName ?? '').trim();
+      const uni = await manager
+        .createQueryBuilder(SysUniversities, 'u')
+        .where('lower(trim(u.uniName)) = :n', { n: uniName.toLowerCase() })
+        .andWhere('u.deletedAt IS NULL')
+        .getOne();
+      if (!uni) {
+        throw new NotFoundException(
+          `Published university not found in catalog: ${uniName}`,
+        );
+      }
+      await manager.update(
+        SysUniversities,
+        { id: uni.id },
+        universityCatalogInfoUpdate(normalized),
+      );
+      if (commissionChanged) {
+        await this.cascadeCommissionToCourseRows(
+          manager,
+          uni,
+          normalized.commissionType ?? '',
+          (normalized.commission ?? '').trim(),
+        );
+      }
+    });
+
+    await this.recomputeBatchCounts(batch.id);
+    return row;
+  }
+
+  private async cascadeCommissionToCourseRows(
+    manager: EntityManager,
+    uni: SysUniversities,
+    commissionType: string,
+    commission: string,
+  ): Promise<void> {
+    const courseBatch = await manager
+      .createQueryBuilder(DataEntryBatches, 'b')
+      .where('b.batchType = :type', { type: DataEntryBatchType.COURSE })
+      .andWhere('b.deletedAt IS NULL')
+      .andWhere(
+        '(b.sysUniversityId = :uniId OR b.universityKey = :key)',
+        { uniId: uni.id, key: uni.uniName },
+      )
+      .orderBy('b.createdAt', 'DESC')
+      .getOne();
+    if (!courseBatch) return;
+    const rows = await manager.find(DataEntryCourseRows, {
+      where: { batchId: courseBatch.id },
+    });
+    for (const courseRow of rows) {
+      courseRow.fields = {
+        ...courseRow.fields,
+        commission: courseCommissionAmount({
+          commissionType,
+          commission,
+          tuitionFee: courseRow.fields.tuitionFee ?? '',
+        }),
+      };
+      await manager.save(DataEntryCourseRows, courseRow);
+    }
   }
 
   /**
@@ -343,7 +585,7 @@ export class DataEntryStagingService {
     return this.getBatch(batchId);
   }
 
-  private async recomputeBatchCounts(batchId: string): Promise<void> {
+  async recomputeBatchCounts(batchId: string): Promise<void> {
     const batch = await this.getBatch(batchId);
     const table =
       batch.batchType === DataEntryBatchType.UNIVERSITY
