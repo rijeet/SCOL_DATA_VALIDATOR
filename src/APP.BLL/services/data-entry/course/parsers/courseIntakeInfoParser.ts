@@ -94,3 +94,36 @@ export function parseIntakeInfoList(raw: string): ParsedIntake[] {
   }
   return intakes;
 }
+
+const MONTH_LABELS = [
+  'Jan',
+  'Feb',
+  'Mar',
+  'Apr',
+  'May',
+  'Jun',
+  'Jul',
+  'Aug',
+  'Sep',
+  'Oct',
+  'Nov',
+  'Dec',
+] as const;
+
+/** Catalog intakes back to CSV-style `Sep-26, Jan-27`. */
+export function formatIntakeInfoList(intakes: ParsedIntake[]): string {
+  const seen = new Set<string>();
+  const parts: string[] = [];
+  const sorted = [...intakes].sort(
+    (a, b) => a.year * 12 + a.month - (b.year * 12 + b.month),
+  );
+  for (const item of sorted) {
+    const key = `${item.year}-${item.month}`;
+    if (seen.has(key)) continue;
+    seen.add(key);
+    const label = MONTH_LABELS[item.month - 1];
+    if (!label) continue;
+    parts.push(`${label}-${String(item.year).slice(-2)}`);
+  }
+  return parts.join(', ');
+}

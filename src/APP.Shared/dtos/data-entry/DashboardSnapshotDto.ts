@@ -21,7 +21,7 @@ export type DashboardCountrySlice = {
 export type DashboardDegreeItem = {
   id: string;
   name: string;
-  levelOrder: number;
+  levelOrder: number | null;
   courseCount: number;
   courseCountByCountryId: Record<string, number>;
 };
@@ -39,6 +39,7 @@ export type DashboardScholarshipItem = {
   countryId: string;
   degreeId: string;
   degreeName: string;
+  name: string | null;
   amount: string | null;
   amountType: string | null;
   courseCount: number;
@@ -58,6 +59,26 @@ export type DashboardUniIntakes = {
   intakes: DashboardIntakeChip[];
 };
 
+export type DashboardProgrammeItem = {
+  id: string;
+  name: string;
+  courseCount: number;
+  courseCountByUniId: Record<string, number>;
+};
+
+export type DashboardEntryDegreeGroup = {
+  uniId: string;
+  uniName: string;
+  countryId: string;
+  minDegreeId: string;
+  minDegreeName: string;
+  minGpa: string | null;
+  highDegreeId: string | null;
+  highDegreeName: string | null;
+  highGpa: string | null;
+  courseCount: number;
+};
+
 export type DashboardSnapshotPayload = {
   updatedAt: string;
   totals: {
@@ -70,6 +91,8 @@ export type DashboardSnapshotPayload = {
   englishTests: DashboardEnglishTestItem[];
   scholarships: DashboardScholarshipItem[];
   intakesByUni: DashboardUniIntakes[];
+  programmes: DashboardProgrammeItem[];
+  entryDegreesByUni: DashboardEntryDegreeGroup[];
   geo: {
     countries: DashboardGeoItem[];
     statesByCountryId: Record<string, DashboardGeoItem[]>;
@@ -79,4 +102,21 @@ export type DashboardSnapshotPayload = {
 
 export type DashboardSnapshotResponse = {
   payload: DashboardSnapshotPayload | null;
+};
+
+export type DashboardDegreeCourseItem = {
+  uniId: string;
+  uniName: string;
+  courseName: string;
+  programmeName: string | null;
+  universityKey: string;
+  batchId: string | null;
+  rowIndex: number | null;
+  rowCount: number | null;
+};
+
+export type DashboardDegreeCourseList = {
+  degreeId: string;
+  degreeName: string;
+  courses: DashboardDegreeCourseItem[];
 };
