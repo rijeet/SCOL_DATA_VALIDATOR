@@ -25,10 +25,20 @@ export const UNIVERSITY_IMAGE_KINDS = ['logo', 'cover'] as const;
 
 export type UniversityImageKind = (typeof UNIVERSITY_IMAGE_KINDS)[number];
 
+export const UNIVERSITY_IMAGE_MAX_BYTES = 5 * 1024 * 1024;
+
+export const UNIVERSITY_IMAGE_MIME_TYPES = [
+  'image/jpeg',
+  'image/png',
+  'image/webp',
+] as const;
+
+export type UniversityImageMimeType =
+  (typeof UNIVERSITY_IMAGE_MIME_TYPES)[number];
+
 export const UNIVERSITY_IMAGE_EXTENSIONS = [
   'jpg',
   'jpeg',
   'png',
   'webp',
-  'gif',
 ] as const;

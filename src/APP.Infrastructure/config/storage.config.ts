@@ -9,6 +9,9 @@ export default () => ({
     applicationKey: process.env.B2_APPLICATION_KEY,
     bucketName: process.env.B2_BUCKET_NAME,
     endpoint: process.env.B2_ENDPOINT,
-    region: process.env.B2_REGION ?? 'us-west-002',
+    region: process.env.B2_REGION ?? 'us-east-005',
+    publicKeyId: process.env.B2_PUBLIC_KEY_ID,
+    publicApplicationKey: process.env.B2_PUBLIC_APPLICATION_KEY,
+    publicBucketName: process.env.B2_PUBLIC_BUCKET_NAME,
   },
 });

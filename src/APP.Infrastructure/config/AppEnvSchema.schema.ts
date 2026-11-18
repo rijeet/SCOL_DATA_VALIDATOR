@@ -91,6 +91,9 @@ export const AppEnvSchema = Joi.object({
   B2_BUCKET_NAME: Joi.string().optional(),
   B2_ENDPOINT: Joi.string().uri().optional(),
   B2_REGION: Joi.string().optional(),
+  B2_PUBLIC_KEY_ID: Joi.string().allow('').optional(),
+  B2_PUBLIC_APPLICATION_KEY: Joi.string().allow('').optional(),
+  B2_PUBLIC_BUCKET_NAME: Joi.string().allow('').optional(),
 
   STORAGE_UPLOAD_URL_EXPIRES_SECONDS: Joi.number()
     .integer()
@@ -107,6 +110,11 @@ export const AppEnvSchema = Joi.object({
   ADMIN_PHONE: Joi.string().min(8).max(50).optional(),
 
   DATA_ENTRY_CLOUD_ROOT: Joi.string().default('SCOL_DATA'),
+  /** Emergency: Export CSV includes invalid rows as well as valid. */
+  DATA_ENTRY_EXPORT_ALL_ROWS: Joi.boolean()
+    .truthy('true', '1', 'yes')
+    .falsy('false', '0', 'no', '')
+    .default(false),
 
   CLOUDINARY_CLOUD_NAME: Joi.string().optional(),
   CLOUDINARY_API_KEY: Joi.string().optional(),

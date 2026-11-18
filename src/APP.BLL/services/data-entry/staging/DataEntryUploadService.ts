@@ -5,8 +5,10 @@ import {
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
+import { ConfigService } from '@nestjs/config';
 import { AppDbContext } from '@infra/db/typeorm/AppDbContext';
 import { CloudinaryUniversityDataService } from '@infra/cloudinary/CloudinaryUniversityData.service';
+import { PublicAssetStorageService } from '@infra/storage/backblaze/PublicAssetStorageService';
 import {
   DataEntryBatches,
   DataEntryBatchStatus,
@@ -22,10 +24,16 @@ import {
   DATA_ENTRY_MAX_FILE_BYTES,
   UNIVERSITY_IMAGE_CLOUD_PREFIX,
   UNIVERSITY_IMAGE_EXTENSIONS,
+  UNIVERSITY_IMAGE_MAX_BYTES,
+  UNIVERSITY_IMAGE_MIME_TYPES,
   type DataEntryHelperKey,
+  type UniversityImageKind,
 } from '@shared/constants/dataEntryCloud.constants';
 import { GenerateDataEntryUploadUrlRequestDto } from '@shared/dtos/data-entry/GenerateDataEntryUploadUrlRequestDto';
+import { ConfirmUniversityImageUploadRequestDto } from '@shared/dtos/data-entry/ConfirmUniversityImageUploadRequestDto';
+import { ConfirmUniversityImageUploadResponseDto } from '@shared/dtos/data-entry/ConfirmUniversityImageUploadResponseDto';
 import { GenerateUniversityImageUploadUrlRequestDto } from '@shared/dtos/data-entry/GenerateUniversityImageUploadUrlRequestDto';
+import { GenerateUniversityImageUploadUrlResponseDto } from '@shared/dtos/data-entry/GenerateUniversityImageUploadUrlResponseDto';
 import { slugify } from '@shared/utils/slugify';
 import { parseCsv } from '../common/engine/CsvParser';
 import { validateSchema } from '../common/engine/HeaderValidator';
@@ -40,6 +48,7 @@ import {
 import { UniversityRowValidator } from '../university/UniversityRowValidator';
 import { isCourseRowFieldRequired } from '@shared/validation/courseRowFieldValidation';
 import { DataEntryStorageKeyBuilder } from './DataEntryStorageKeyBuilder';
+import { ensureCourseKeys } from './assignCourseKeys';
 import { DataEntryPublishService } from './DataEntryPublishService';
 import type { CsvRow } from '../common/abstractions/CsvImportProcessor';
 
@@ -60,10 +69,12 @@ export class DataEntryUploadService {
   constructor(
     private readonly db: AppDbContext,
     private readonly cloudinary: CloudinaryUniversityDataService,
+    private readonly publicAssets: PublicAssetStorageService,
     private readonly keys: DataEntryStorageKeyBuilder,
     private readonly courseValidator: CourseRowValidator,
     private readonly universityValidator: UniversityRowValidator,
     private readonly publish: DataEntryPublishService,
+    private readonly config: ConfigService,
   ) {}
 
   async generateUploadUrl(
@@ -251,20 +262,8 @@ export class DataEntryUploadService {
   async generateUniversityImageUploadUrl(
     batchId: string,
     dto: GenerateUniversityImageUploadUrlRequestDto,
-  ): Promise<CloudinarySignedUploadDto> {
-    const batch = await this.requireBatch(batchId);
-    if (batch.batchType !== DataEntryBatchType.UNIVERSITY) {
-      throw new BadRequestException(
-        'Image upload is only available for university batches',
-      );
-    }
-    if (batch.status === DataEntryBatchStatus.PUBLISHED) {
-      throw new ConflictException('Published batches cannot be edited');
-    }
-    const slug = slugify(dto.uniName);
-    if (!slug) {
-      throw new BadRequestException('University name is required');
-    }
+  ): Promise<GenerateUniversityImageUploadUrlResponseDto> {
+    this.assertUniversityImageBatch(await this.requireBatch(batchId));
     const ext = dto.fileName.split('.').pop()?.toLowerCase() ?? '';
     if (
       !UNIVERSITY_IMAGE_EXTENSIONS.includes(
@@ -277,15 +276,74 @@ export class DataEntryUploadService {
     }
     if (
       dto.fileSizeBytes < 1 ||
-      dto.fileSizeBytes > DATA_ENTRY_MAX_FILE_BYTES
+      dto.fileSizeBytes > UNIVERSITY_IMAGE_MAX_BYTES
     ) {
+      throw new BadRequestException('Image must be 5 MB or smaller.');
+    }
+    const storageKey = this.universityImageStorageKey(dto.uniName, dto.kind);
+    const expiresInSeconds =
+      this.config.get<number>('STORAGE_UPLOAD_URL_EXPIRES_SECONDS') ?? 900;
+    const uploadUrl = await this.publicAssets.generateUploadUrl(
+      storageKey,
+      dto.mimeType,
+      expiresInSeconds,
+    );
+    return {
+      uploadUrl,
+      storageKey,
+      headers: { 'Content-Type': dto.mimeType },
+      expiresInSeconds,
+    };
+  }
+
+  async confirmUniversityImageUpload(
+    batchId: string,
+    dto: ConfirmUniversityImageUploadRequestDto,
+  ): Promise<ConfirmUniversityImageUploadResponseDto> {
+    this.assertUniversityImageBatch(await this.requireBatch(batchId));
+    const expectedKey = this.universityImageStorageKey(dto.uniName, dto.kind);
+    if (dto.storageKey !== expectedKey) {
       throw new BadRequestException(
-        `File size must be between 1 byte and ${DATA_ENTRY_MAX_FILE_BYTES} bytes`,
+        'Storage key does not match this university image.',
       );
     }
-    const publicId = `${UNIVERSITY_IMAGE_CLOUD_PREFIX}/${slug}/${dto.kind}`;
-    const tags = `university,${dto.kind}`;
-    return this.cloudinary.generateSignedImageUpload(publicId, tags);
+    const head = await this.publicAssets.head(expectedKey);
+    if (!head) {
+      throw new BadRequestException(
+        'File not found in storage. Upload it first.',
+      );
+    }
+    const contentType = (head.contentType ?? '').split(';')[0].trim().toLowerCase();
+    if (
+      !UNIVERSITY_IMAGE_MIME_TYPES.includes(
+        contentType as (typeof UNIVERSITY_IMAGE_MIME_TYPES)[number],
+      )
+    ) {
+      throw new BadRequestException('Use a JPEG, PNG, or WebP image.');
+    }
+    if (head.size < 1 || head.size > UNIVERSITY_IMAGE_MAX_BYTES) {
+      throw new BadRequestException('Image must be 5 MB or smaller.');
+    }
+    return { fileUrl: this.publicAssets.fileUrl(expectedKey, Date.now()) };
+  }
+
+  private assertUniversityImageBatch(batch: DataEntryBatches): void {
+    if (batch.batchType !== DataEntryBatchType.UNIVERSITY) {
+      throw new BadRequestException(
+        'Image upload is only available for university batches',
+      );
+    }
+  }
+
+  private universityImageStorageKey(
+    uniName: string,
+    kind: UniversityImageKind,
+  ): string {
+    const slug = slugify(uniName);
+    if (!slug) {
+      throw new BadRequestException('University name is required');
+    }
+    return `${UNIVERSITY_IMAGE_CLOUD_PREFIX}/${slug}/${kind}`;
   }
 
   async discardBatch(batchId: string): Promise<{ deleted: true }> {
@@ -419,7 +477,10 @@ export class DataEntryUploadService {
     csvText: string,
   ): Promise<void> {
     const parsed = parseCsv(csvText);
-    validateSchema(parsed, CourseImportSchema.inputHeaders);
+    validateSchema(
+      parsed,
+      CourseImportSchema.requiredHeaders ?? CourseImportSchema.inputHeaders,
+    );
     await this.db.Set(DataEntryCourseRows).delete({ batchId: batch.id });
 
     let catalogUniName: string | null = null;
@@ -472,6 +533,9 @@ export class DataEntryUploadService {
     batch.invalidRowCount = invalidCount;
     batch.status = DataEntryBatchStatus.READY;
     await this.db.Set(DataEntryBatches).save(batch);
+    await this.db.transaction(async (manager) => {
+      await ensureCourseKeys(manager, batch);
+    });
   }
 
   private async snapshotHelpers(batch: DataEntryBatches): Promise<void> {
