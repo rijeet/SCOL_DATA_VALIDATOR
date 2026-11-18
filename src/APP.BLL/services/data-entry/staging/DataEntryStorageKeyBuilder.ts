@@ -26,6 +26,13 @@ export class DataEntryStorageKeyBuilder {
     return `${this.prefix(countryCode, type, batchId, uniSlug)}/original.csv`;
   }
 
+  /** Sibling of original.csv — DATA FIX filled file, does not replace the batch CSV. */
+  filledCsvPublicId(csvObjectKey: string): string {
+    const slash = csvObjectKey.lastIndexOf('/');
+    const folder = slash >= 0 ? csvObjectKey.slice(0, slash) : '';
+    return folder ? `${folder}/filled.csv` : 'filled.csv';
+  }
+
   helperPublicId(
     countryCode: string,
     type: DataEntryBatchType,
