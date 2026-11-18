@@ -3,6 +3,10 @@ import type { EntityManager } from 'typeorm';
 import { SysAcademicDegrees } from '@entity/entities/SysAcademicDegrees.entity';
 import { SysProgrammes } from '@entity/entities/SysProgrammes.entity';
 import { SysEnglishTests } from '@entity/entities/SysEnglishTests.entity';
+import {
+  canonicalEntryDegreeName,
+  DEGREE_SEEDS,
+} from '@shared/constants/degreeSeeds.constants';
 
 export class DataEntryCatalogLookup {
   private readonly programmes = new Map<string, string>();

@@ -31,10 +31,10 @@ export class SysAcademicDegrees extends BaseEntity {
   @Column({
     name: 'levelOrder',
     type: 'int',
-    nullable: false,
+    nullable: true,
   })
   @AutoMap()
-  levelOrder!: number;
+  levelOrder?: number | null;
 
   // ========================================
   // Navigation Properties (EF Core style)

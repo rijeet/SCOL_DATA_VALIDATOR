@@ -1,4 +1,4 @@
-import { CommissionType } from '@shared/enums/CommissionType.enum';
+import { normalizeCommissionType } from '@shared/constants/amountTypes.constants';
 
 export const UNIVERSITY_ROW_REQUIRED_FIELDS = [
   'uniName',
@@ -8,10 +8,8 @@ export const UNIVERSITY_ROW_REQUIRED_FIELDS = [
   'address',
   'commissionType',
   'commission',
-  'logoUrl',
   'website',
   'aboutUs',
-  'coverImageUrl',
   'campusLifeLinks',
   'rankingMetaData',
   'locationMapMetaData',
@@ -24,6 +22,31 @@ const REQUIRED_SET: ReadonlySet<string> = new Set(UNIVERSITY_ROW_REQUIRED_FIELDS
 
 export function isUniversityRowFieldRequired(fieldKey: string): boolean {
   return REQUIRED_SET.has(fieldKey);
+}
+
+/** After catalog publish, only these staging fields stay editable and sync to sys_Universities. */
+export const POST_PUBLISH_UNI_EDITABLE_FIELDS = [
+  'address',
+  'commissionType',
+  'commission',
+  'website',
+  'aboutUs',
+  'logoUrl',
+  'coverImageUrl',
+  'campusLifeLinks',
+  'rankingMetaData',
+  'locationMapMetaData',
+  'establishedYear',
+  'universityType',
+  'currRanking',
+] as const;
+
+const POST_PUBLISH_EDITABLE_SET: ReadonlySet<string> = new Set(
+  POST_PUBLISH_UNI_EDITABLE_FIELDS,
+);
+
+export function isPostPublishUniEditableField(fieldKey: string): boolean {
+  return POST_PUBLISH_EDITABLE_SET.has(fieldKey);
 }
 
 const URL_FIELDS = ['logoUrl', 'website', 'coverImageUrl'] as const;
@@ -130,12 +153,9 @@ export function validateUniversityRowFields(
     if (!v) errors[key] = 'Missing';
   }
 
-  const commissionType = (row.commissionType ?? '').trim().toUpperCase();
-  if (commissionType) {
-    const allowed = Object.values(CommissionType) as string[];
-    if (!allowed.includes(commissionType)) {
-      errors.commissionType = `Must be ${allowed.join(' or ')}`;
-    }
+  const commissionTypeRaw = (row.commissionType ?? '').trim();
+  if (commissionTypeRaw && !normalizeCommissionType(commissionTypeRaw)) {
+    errors.commissionType = 'Must be Amount or Percentage';
   }
 
   const commission = (row.commission ?? '').trim();

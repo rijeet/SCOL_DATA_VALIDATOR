@@ -1,3 +1,13 @@
+import {
+  normalizeScholarshipType,
+  scholarshipTypeLabels,
+} from '@shared/constants/amountTypes.constants';
+import {
+  canonicalEntryDegreeName,
+  entryDegreeLabels,
+  gpaScaleForEntryDegree,
+} from '@shared/constants/degreeSeeds.constants';
+
 /**
  * Pure course-row checks: GPA scale by degree label, English test score caps,
  * and "Missing" flags for required (*) data-entry columns present on the row.
@@ -93,6 +103,8 @@ function normalizeDegreeKey(degreeName: string): string {
  * Unknown labels default to 5.0 (same as lead academic form).
  */
 export function gpaMaxScaleForDegreeLabel(degreeName: string): number {
+  const seeded = canonicalEntryDegreeName(degreeName);
+  if (seeded) return gpaScaleForEntryDegree(seeded);
   const key = normalizeDegreeKey(degreeName);
   if (!key) return 5;
   if (GPA_SCALE_FIVE.has(key)) return 5;
@@ -223,6 +235,20 @@ export function validateCourseRowScoreAndCompleteness(
     }
   }
   Object.assign(errors, requiredMissingErrors(row));
+
+  const minDeg = (row.minDegreeName ?? '').trim();
+  if (minDeg && !canonicalEntryDegreeName(minDeg)) {
+    errors.minDegreeName = `Must be ${entryDegreeLabels()}`;
+  }
+  const highDeg = (row.higherDegreeName ?? '').trim();
+  if (highDeg && !canonicalEntryDegreeName(highDeg)) {
+    errors.higherDegreeName = `Must be ${entryDegreeLabels()}`;
+  }
+
+  const scholarshipType = (row.scholarshipType ?? '').trim();
+  if (scholarshipType && !normalizeScholarshipType(scholarshipType)) {
+    errors.scholarshipType = `Must be ${scholarshipTypeLabels()}`;
+  }
 
   return errors;
 }
