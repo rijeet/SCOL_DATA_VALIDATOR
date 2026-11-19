@@ -15,7 +15,6 @@ import {
   RefreshCw,
   X,
 } from 'lucide-react';
-import { useNavigate } from 'react-router-dom';
 import { AdminShell } from '../components/AdminShell';
 import { ConfirmDialog } from '../components/ConfirmDialog';
 import { LoadingSplash } from '../components/LoadingSplash';
@@ -250,7 +249,6 @@ function formatAmount(amount: string | null, amountType: string | null): string 
 }
 
 export function DashboardPage() {
-  const navigate = useNavigate();
   const [payload, setPayload] = useState<SnapshotPayload | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
