@@ -100,7 +100,8 @@ export class CourseRowValidator {
 
     const durRaw = (row.courseDuration ?? '').trim();
     if (durRaw && parseCourseDurationMonths(row.courseDuration) === null) {
-      errors.courseDuration = 'Must contain a number (months)';
+      errors.courseDuration =
+        'Must be one number of months, e.g. 24 or 24 months';
     }
 
     const ar = (row.AcademicRequirementsMetaData ?? '').trim();

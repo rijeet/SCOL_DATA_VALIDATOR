@@ -232,6 +232,11 @@ export function validateCourseRowScoreAndCompleteness(
     errors.higherDegreeName = `Must be ${entryDegreeLabels()}`;
   }
 
+  const duration = (row.courseDuration ?? '').trim();
+  if (duration && !/^\d+\s*(?:months?)?$/i.test(duration)) {
+    errors.courseDuration = 'Must be one number of months, e.g. 24 or 24 months';
+  }
+
   const scholarshipType = (row.scholarshipType ?? '').trim();
   if (scholarshipType && !normalizeScholarshipType(scholarshipType)) {
     errors.scholarshipType = `Must be ${scholarshipTypeLabels()}`;

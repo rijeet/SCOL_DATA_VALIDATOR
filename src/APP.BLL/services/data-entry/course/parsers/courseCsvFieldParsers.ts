@@ -1,10 +1,11 @@
 /**
- * Parses course duration: `36`, `36 months`, ` 48 ` → integer months or null if invalid.
+ * Parses course duration: `36`, `36 months`, ` 48 ` → integer months.
+ * A second number (`24, 48`) is invalid.
  */
 export function parseCourseDurationMonths(raw: string): number | null {
   const t = raw.trim();
   if (!t) return null;
-  const m = t.match(/(\d+)/);
+  const m = t.match(/^(\d+)\s*(?:months?)?$/i);
   if (!m) return null;
   const n = Number(m[1]);
   return Number.isNaN(n) ? null : n;

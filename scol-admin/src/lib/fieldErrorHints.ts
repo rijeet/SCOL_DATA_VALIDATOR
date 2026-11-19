@@ -27,7 +27,8 @@ export const FIELD_FORMAT_HINTS: Record<string, string> = {
   commissionType: 'Choose Amount or Percentage',
   scholarshipType: 'Choose Amount or Percentage',
   applicationDeadline: 'e.g. 08-31-2026 — empty shows as Missing',
-  courseDuration: 'Months as a number, e.g. 12 — empty shows as Missing',
+  courseDuration:
+    'One number of months, e.g. 24 or 24 months. Two values such as 24, 48 are invalid.',
   courseUrlExternal: 'Full course URL — empty shows as Missing',
   courseKey:
     'Stable identity for DATA FIX. Same URL can be used by foundation/placement siblings — do not edit.',
