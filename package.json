@@ -27,6 +27,7 @@
     "seed:destinations": "ts-node -r tsconfig-paths/register --transpile-only src/seeds/seed-destinations.ts",
     "seed:degrees": "ts-node -r ./load-env.js -r tsconfig-paths/register --transpile-only src/seeds/seed-degrees.ts",
     "seed:amount-types": "ts-node -r ./load-env.js -r tsconfig-paths/register --transpile-only src/seeds/seed-amount-types.ts",
+    "seed:english-tests": "ts-node -r ./load-env.js -r tsconfig-paths/register --transpile-only src/seeds/seed-english-tests.ts",
     "reload:intakes": "ts-node -r ./load-env.js -r tsconfig-paths/register --transpile-only src/seeds/reload-intakes-from-staging.ts"
   },
   "dependencies": {
