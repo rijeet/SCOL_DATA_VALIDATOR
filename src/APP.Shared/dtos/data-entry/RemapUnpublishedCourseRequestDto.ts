@@ -124,6 +124,38 @@ export class RemapUnpublishedIntakesRequestDto {
   toMonth!: number;
 }
 
+export class SetUnpublishedIntakeDeadlineRequestDto {
+  @ApiProperty()
+  @IsUUID()
+  batchId!: string;
+
+  @ApiProperty()
+  @Type(() => Number)
+  @IsInt()
+  @Min(2000)
+  @Max(2100)
+  year!: number;
+
+  @ApiProperty({ description: '1–12' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  month!: number;
+
+  @ApiPropertyOptional({ description: 'MM/DD/YYYY, or empty to clear' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  applicationDeadline?: string;
+
+  @ApiPropertyOptional({ description: 'Plain number, or empty to clear' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  applicationFee?: string;
+}
+
 export class RemapUnpublishedEntryDegreesRequestDto {
   @ApiProperty()
   @IsUUID()

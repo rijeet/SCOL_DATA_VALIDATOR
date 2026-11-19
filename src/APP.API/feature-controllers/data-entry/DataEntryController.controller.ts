@@ -39,6 +39,7 @@ import {
   RemapUnpublishedEntryDegreesRequestDto,
   RemapUnpublishedIntakesRequestDto,
   RemapUnpublishedScholarshipsRequestDto,
+  SetUnpublishedIntakeDeadlineRequestDto,
   RenameUnpublishedProgrammeRequestDto,
 } from '@shared/dtos/data-entry/RemapUnpublishedCourseRequestDto';
 import { GenerateApplyFilledUploadUrlRequestDto } from '@shared/dtos/data-entry/GenerateApplyFilledUploadUrlRequestDto';
@@ -53,7 +54,9 @@ import {
   RemapDashboardEnglishScoresRequestDto,
   RemapDashboardIntakesRequestDto,
   RemapDashboardTuitionRequestDto,
+  SetDashboardIntakeDeadlineRequestDto,
 } from '@shared/dtos/data-entry/RemapDashboardIntakesRequestDto';
+import { ApplyScholarshipMetaRequestDto } from '@shared/dtos/data-entry/ApplyScholarshipMetaRequestDto';
 import { RemapDashboardScholarshipsRequestDto } from '@shared/dtos/data-entry/RemapDashboardScholarshipsRequestDto';
 import { RenameDashboardProgrammeRequestDto } from '@shared/dtos/data-entry/RenameDashboardProgrammeRequestDto';
 import {
@@ -146,6 +149,15 @@ export class DataEntryController {
   })
   remapDashboardIntakes(@Body() dto: RemapDashboardIntakesRequestDto) {
     return this.dashboard.remapIntakes(dto);
+  }
+
+  @Post('dashboard/intakes/deadline')
+  @ApiOperation({
+    summary:
+      'Set application deadline and fee for one intake at a university',
+  })
+  setDashboardIntakeDeadline(@Body() dto: SetDashboardIntakeDeadlineRequestDto) {
+    return this.dashboard.setIntakeDeadline(dto);
   }
 
   @Post('dashboard/courses/entry-degrees')
@@ -276,6 +288,22 @@ export class DataEntryController {
     @Body() dto: RemapDashboardScholarshipsRequestDto,
   ) {
     return this.dashboard.remapScholarships(dto);
+  }
+
+  @Get('dashboard/scholarships/metadata-preview')
+  @ApiOperation({
+    summary: 'Scholarship rows whose amount and metadata do not match',
+  })
+  dashboardScholarshipMetaPreview() {
+    return this.dashboard.scholarshipMetaPreview();
+  }
+
+  @Post('dashboard/scholarships/metadata-fix')
+  @ApiOperation({
+    summary: 'Clear or fill scholarship metadata for mismatched groups',
+  })
+  applyDashboardScholarshipMeta(@Body() dto: ApplyScholarshipMetaRequestDto) {
+    return this.dashboard.applyScholarshipMeta(dto);
   }
 
   @Get('unpublished/snapshot')
@@ -418,6 +446,22 @@ export class DataEntryController {
     return this.unpublished.remapScholarships(dto);
   }
 
+  @Get('unpublished/scholarships/metadata-preview')
+  @ApiOperation({
+    summary: 'Unpublished rows whose scholarship amount and metadata do not match',
+  })
+  unpublishedScholarshipMetaPreview() {
+    return this.unpublished.scholarshipMetaPreview();
+  }
+
+  @Post('unpublished/scholarships/metadata-fix')
+  @ApiOperation({
+    summary: 'Clear or fill scholarship metadata on unpublished course rows',
+  })
+  applyUnpublishedScholarshipMeta(@Body() dto: ApplyScholarshipMetaRequestDto) {
+    return this.unpublished.applyScholarshipMeta(dto);
+  }
+
   @Get('unpublished/intakes/courses')
   @ApiOperation({
     summary: 'Unpublished course rows whose intakeInfo includes this month',
@@ -436,6 +480,17 @@ export class DataEntryController {
   })
   remapUnpublishedIntakes(@Body() dto: RemapUnpublishedIntakesRequestDto) {
     return this.unpublished.remapIntakes(dto);
+  }
+
+  @Post('unpublished/intakes/deadline')
+  @ApiOperation({
+    summary:
+      'Set application deadline and fee on unpublished rows for one intake',
+  })
+  setUnpublishedIntakeDeadline(
+    @Body() dto: SetUnpublishedIntakeDeadlineRequestDto,
+  ) {
+    return this.unpublished.setIntakeDeadline(dto);
   }
 
   @Get('universities')

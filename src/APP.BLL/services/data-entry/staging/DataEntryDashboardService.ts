@@ -25,7 +25,11 @@ import {
   formatIntakeInfoList,
   parseIntakeInfoList,
 } from '../course/parsers/courseIntakeInfoParser';
-import { parseOptionalDecimal } from '../course/parsers/courseCsvFieldParsers';
+import {
+  parseOptionalDate,
+  parseOptionalDecimal,
+} from '../course/parsers/courseCsvFieldParsers';
+import { parseMetaDataItems } from '../common/engine/MetaDataParser';
 import { normalizeCommissionType } from '@shared/constants/amountTypes.constants';
 import type { ApplyToeflScaleRequestDto } from '@shared/dtos/data-entry/ApplyToeflScaleRequestDto';
 import {
@@ -40,7 +44,18 @@ import type {
   RemapDashboardEnglishScoresRequestDto,
   RemapDashboardIntakesRequestDto,
   RemapDashboardTuitionRequestDto,
+  SetDashboardIntakeDeadlineRequestDto,
 } from '@shared/dtos/data-entry/RemapDashboardIntakesRequestDto';
+import type { ApplyScholarshipMetaRequestDto } from '@shared/dtos/data-entry/ApplyScholarshipMetaRequestDto';
+import {
+  collectScholarshipMetaPreview,
+  metadataText,
+  rewriteScholarshipMeta,
+  scholarshipAmountNumber,
+  type ScholarshipMetaFill,
+  type ScholarshipMetaPreview,
+  type ScholarshipMetaSample,
+} from '@shared/validation/scholarshipMeta';
 import type { RemapDashboardScholarshipsRequestDto } from '@shared/dtos/data-entry/RemapDashboardScholarshipsRequestDto';
 import type { RenameDashboardProgrammeRequestDto } from '@shared/dtos/data-entry/RenameDashboardProgrammeRequestDto';
 import type {
@@ -554,6 +569,181 @@ export class DataEntryDashboardService {
     });
 
     return { updated, merged, skipped };
+  }
+
+  async setIntakeDeadline(
+    dto: SetDashboardIntakeDeadlineRequestDto,
+  ): Promise<RemapIntakesResult> {
+    const patch = checkedDeadlinePatch(dto);
+    const uni = await this.db.Set(SysUniversities).findOne({
+      where: { id: dto.uniId },
+    });
+    if (!uni) throw new NotFoundException('University not found');
+
+    let updated = 0;
+    await this.db.transaction(async (manager) => {
+      const intakes = await manager
+        .createQueryBuilder(UniCourseIntakes, 'i')
+        .innerJoin(UniCourses, 'c', 'c.id = i.uniCourseId')
+        .where('c.uniId = :uniId', { uniId: dto.uniId })
+        .andWhere('i.intakeYear = :year', { year: dto.year })
+        .andWhere('i.intakeMonth = :month', { month: dto.month })
+        .andWhere('i.deletedAt IS NULL')
+        .andWhere('c.deletedAt IS NULL')
+        .andWhere('i.isActive = true')
+        .getMany();
+      for (const row of intakes) {
+        await manager.update(
+          UniCourseIntakes,
+          row.id,
+          patch.catalog as never,
+        );
+        updated += 1;
+      }
+      const batch = await this.latestCourseBatch(manager, dto.uniId);
+      if (!batch) return;
+      const rows = await manager.find(DataEntryCourseRows, {
+        where: { batchId: batch.id },
+      });
+      for (const row of rows) {
+        if (!intakeMatches(row.fields.intakeInfo, dto.year, dto.month)) continue;
+        row.fields = { ...row.fields, ...patch.staging };
+        await manager.save(DataEntryCourseRows, row);
+        updated += 1;
+      }
+    });
+    return { updated, merged: 0, skipped: 0 };
+  }
+
+  async scholarshipMetaPreview(): Promise<ScholarshipMetaPreview> {
+    return collectScholarshipMetaPreview(await this.scholarshipMetaSamples());
+  }
+
+  async applyScholarshipMeta(
+    dto: ApplyScholarshipMetaRequestDto,
+  ): Promise<RemapIntakesResult> {
+    const clears = new Set(
+      dto.clearMetadata.map((item) => item.trim()).filter(Boolean),
+    );
+    const fills = checkedScholarshipFills(dto.fills);
+    let updated = 0;
+    await this.db.transaction(async (manager) => {
+      const raw = await manager
+        .createQueryBuilder(UniCourseIntakes, 'i')
+        .innerJoin(UniCourses, 'c', 'c.id = i.uniCourseId AND c.deletedAt IS NULL')
+        .leftJoin(
+          CourseIntakeScholarships,
+          's',
+          's.courseIntakeId = i.id AND s.deletedAt IS NULL AND s.isActive = true',
+        )
+        .where('i.deletedAt IS NULL')
+        .andWhere('i.isActive = true')
+        .select('i.id', 'id')
+        .addSelect('i.scholarshipMetaData', 'metadata')
+        .addSelect('s.name', 'name')
+        .addSelect('s.amount', 'amount')
+        .getRawMany<{
+          id: string;
+          metadata: unknown;
+          name: string | null;
+          amount: string | null;
+        }>();
+      const byIntake = new Map<
+        string,
+        { metadata: string; scholarships: { name: string; amount: string }[] }
+      >();
+      for (const row of raw) {
+        const current = byIntake.get(row.id) ?? {
+          metadata: metadataText(row.metadata),
+          scholarships: [],
+        };
+        if (row.name) {
+          current.scholarships.push({
+            name: row.name,
+            amount: row.amount ?? '',
+          });
+        }
+        byIntake.set(row.id, current);
+      }
+      for (const [id, intake] of byIntake) {
+        const next = catalogScholarshipMeta(intake, clears, fills);
+        if (next === undefined) continue;
+        await manager.update(UniCourseIntakes, id, {
+          scholarshipMetaData: next,
+        } as never);
+        updated += 1;
+      }
+      for (const batch of await this.latestCourseBatches()) {
+        if (!batch.sysUniversityId) continue;
+        const rows = await manager.find(DataEntryCourseRows, {
+          where: { batchId: batch.id },
+        });
+        for (const row of rows) {
+          const next = rewriteScholarshipMeta(row.fields, clears, fills);
+          if (!next) continue;
+          row.fields = next;
+          await manager.save(DataEntryCourseRows, row);
+          updated += 1;
+        }
+      }
+    });
+    return { updated, merged: 0, skipped: 0 };
+  }
+
+  private async scholarshipMetaSamples(): Promise<ScholarshipMetaSample[]> {
+    const raw = await this.db
+      .Set(UniCourseIntakes)
+      .createQueryBuilder('i')
+      .innerJoin(UniCourses, 'c', 'c.id = i.uniCourseId AND c.deletedAt IS NULL')
+      .leftJoin(
+        CourseIntakeScholarships,
+        's',
+        's.courseIntakeId = i.id AND s.deletedAt IS NULL AND s.isActive = true',
+      )
+      .where('i.deletedAt IS NULL')
+      .andWhere('i.isActive = true')
+      .select('i.id', 'id')
+      .addSelect('i.scholarshipMetaData', 'metadata')
+      .addSelect('s.name', 'name')
+      .addSelect('s.amount', 'amount')
+      .getRawMany<{
+        id: string;
+        metadata: unknown;
+        name: string | null;
+        amount: string | null;
+      }>();
+    const byIntake = new Map<
+      string,
+      { metadata: string; scholarships: { name: string; amount: string }[] }
+    >();
+    for (const row of raw) {
+      const current = byIntake.get(row.id) ?? {
+        metadata: metadataText(row.metadata),
+        scholarships: [],
+      };
+      if (row.name) {
+        current.scholarships.push({ name: row.name, amount: row.amount ?? '' });
+      }
+      byIntake.set(row.id, current);
+    }
+    const samples: ScholarshipMetaSample[] = [];
+    for (const intake of byIntake.values()) {
+      samples.push(...samplesFromScholarships(intake.metadata, intake.scholarships));
+    }
+    for (const batch of await this.latestCourseBatches()) {
+      const rows = await this.db.Set(DataEntryCourseRows).find({
+        where: { batchId: batch.id },
+        select: ['fields'],
+      });
+      for (const row of rows) {
+        samples.push({
+          name: row.fields?.scholarshipName ?? '',
+          amount: row.fields?.scholarshipAmount ?? '',
+          metadata: row.fields?.scholarshipMetaData ?? '',
+        });
+      }
+    }
+    return samples;
   }
 
   async remapEnglishScores(
@@ -1912,6 +2102,138 @@ export class DataEntryDashboardService {
       },
     };
   }
+}
+
+function intakeMatches(
+  raw: string | undefined,
+  year: number,
+  month: number,
+): boolean {
+  return parseIntakeInfoList(raw ?? '').some(
+    (intake) => intake.year === year && intake.month === month,
+  );
+}
+
+function checkedDeadlinePatch(dto: {
+  applicationDeadline?: string;
+  applicationFee?: string;
+}): {
+  catalog: { applicationDeadline?: Date | null; applicationFee?: string | null };
+  staging: Record<string, string>;
+} {
+  const hasDeadline = dto.applicationDeadline !== undefined;
+  const hasFee = dto.applicationFee !== undefined;
+  if (!hasDeadline && !hasFee) {
+    throw new BadRequestException(
+      'Send an application deadline, an application fee, or both',
+    );
+  }
+  const catalog: {
+    applicationDeadline?: Date | null;
+    applicationFee?: string | null;
+  } = {};
+  const staging: Record<string, string> = {};
+  if (hasDeadline) {
+    const text = (dto.applicationDeadline ?? '').trim();
+    if (!text) {
+      catalog.applicationDeadline = null;
+      staging.applicationDeadline = '';
+    } else {
+      const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(text);
+      const date = match
+        ? parseOptionalDate(`${match[3]}-${match[1]}-${match[2]}`)
+        : undefined;
+      if (!date) {
+        throw new BadRequestException(
+          'Application deadline must be MM/DD/YYYY',
+        );
+      }
+      catalog.applicationDeadline = date;
+      staging.applicationDeadline = text;
+    }
+  }
+  if (hasFee) {
+    const text = (dto.applicationFee ?? '').trim();
+    if (!text) {
+      catalog.applicationFee = null;
+      staging.applicationFee = '';
+    } else if (!/^\d+(\.\d+)?$/.test(text)) {
+      throw new BadRequestException(
+        `applicationFee: "${text}" is not a plain number (no commas, currency symbols or spaces)`,
+      );
+    } else {
+      catalog.applicationFee = text;
+      staging.applicationFee = text;
+    }
+  }
+  return { catalog, staging };
+}
+
+function checkedScholarshipFills(
+  fills: { name: string; amount: string; metadata: string }[],
+): ScholarshipMetaFill[] {
+  return fills.map((fill) => {
+    const amount = scholarshipAmountNumber(fill.amount);
+    if (amount == null || amount <= 0) {
+      throw new BadRequestException('Scholarship amount must be greater than 0');
+    }
+    if (!parseMetaDataItems(fill.metadata)) {
+      throw new BadRequestException(
+        'Scholarship metadata must be valid MetaDataItem[] JSON',
+      );
+    }
+    return {
+      name: fill.name.trim().toLowerCase(),
+      amount,
+      metadata: fill.metadata.trim(),
+    };
+  });
+}
+
+function samplesFromScholarships(
+  metadata: string,
+  scholarships: { name: string; amount: string }[],
+): ScholarshipMetaSample[] {
+  const positive = scholarships.filter(
+    (item) => (scholarshipAmountNumber(item.amount) ?? 0) > 0,
+  );
+  if (positive.length === 0) {
+    if (!metadata) return [];
+    return [{ name: '', amount: '0', metadata }];
+  }
+  if (metadata) return [];
+  return positive.map((item) => ({
+    name: item.name,
+    amount: item.amount,
+    metadata: '',
+  }));
+}
+
+function catalogScholarshipMeta(
+  intake: {
+    metadata: string;
+    scholarships: { name: string; amount: string }[];
+  },
+  clears: Set<string>,
+  fills: ScholarshipMetaFill[],
+) {
+  const positive = intake.scholarships.filter(
+    (item) => (scholarshipAmountNumber(item.amount) ?? 0) > 0,
+  );
+  if (positive.length === 0) {
+    if (intake.metadata && clears.has(intake.metadata)) return null;
+    return undefined;
+  }
+  if (intake.metadata) return undefined;
+  const fill = fills.find((item) =>
+    positive.some(
+      (scholarship) =>
+        scholarship.name.trim().toLowerCase() === item.name &&
+        scholarshipAmountNumber(scholarship.amount) === item.amount,
+    ),
+  );
+  if (!fill) return undefined;
+  return parseMetaDataItems(fill.metadata);
 }
 
 function toNumber(value: string | null | undefined): number | null {

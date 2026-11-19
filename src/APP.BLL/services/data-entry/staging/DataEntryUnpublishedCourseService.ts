@@ -31,7 +31,17 @@ import type {
   RemapUnpublishedIntakesRequestDto,
   RemapUnpublishedScholarshipsRequestDto,
   RenameUnpublishedProgrammeRequestDto,
+  SetUnpublishedIntakeDeadlineRequestDto,
 } from '@shared/dtos/data-entry/RemapUnpublishedCourseRequestDto';
+import type { ApplyScholarshipMetaRequestDto } from '@shared/dtos/data-entry/ApplyScholarshipMetaRequestDto';
+import { parseMetaDataItems } from '../common/engine/MetaDataParser';
+import {
+  collectScholarshipMetaPreview,
+  rewriteScholarshipMeta,
+  scholarshipAmountNumber,
+  type ScholarshipMetaFill,
+  type ScholarshipMetaPreview,
+} from '@shared/validation/scholarshipMeta';
 import type { CsvRow } from '../common/abstractions/CsvImportProcessor';
 import { normalizeCourseCsvRow } from '../course/dto/CourseImportRowTypes';
 import {
@@ -777,6 +787,47 @@ export class DataEntryUnpublishedCourseService {
     return { updated };
   }
 
+  async setIntakeDeadline(
+    dto: SetUnpublishedIntakeDeadlineRequestDto,
+  ): Promise<UnpublishedPatchResult> {
+    const staging = checkedStagingDeadline(dto);
+    const batch = await this.requireOpenBatch(dto.batchId);
+    const updated = await this.patchRows(batch, (fields) => {
+      if (!intakeMatches(fields.intakeInfo, dto.year, dto.month)) return null;
+      return { ...fields, ...staging };
+    });
+    return { updated };
+  }
+
+  async scholarshipMetaPreview(): Promise<ScholarshipMetaPreview> {
+    const loaded = await this.loadLatest();
+    const samples = loaded.flatMap(({ rows }) =>
+      rows.map((row) => ({
+        name: row.fields.scholarshipName ?? '',
+        amount: row.fields.scholarshipAmount ?? '',
+        metadata: row.fields.scholarshipMetaData ?? '',
+      })),
+    );
+    return collectScholarshipMetaPreview(samples);
+  }
+
+  async applyScholarshipMeta(
+    dto: ApplyScholarshipMetaRequestDto,
+  ): Promise<UnpublishedPatchResult> {
+    const clears = new Set(
+      dto.clearMetadata.map((item) => item.trim()).filter(Boolean),
+    );
+    const fills = checkedScholarshipFills(dto.fills);
+    const loaded = await this.loadLatest();
+    let updated = 0;
+    for (const { batch } of loaded) {
+      updated += await this.patchRows(batch, (fields) =>
+        rewriteScholarshipMeta(fields, clears, fills),
+      );
+    }
+    return { updated };
+  }
+
   private async loadLatest(): Promise<LoadedBatch[]> {
     const batches = await this.db.Set(DataEntryBatches).find({
       where: {
@@ -847,6 +898,68 @@ export class DataEntryUnpublishedCourseService {
     if (updated > 0) await this.staging.recomputeBatchCounts(batch.id);
     return updated;
   }
+}
+
+function intakeMatches(
+  raw: string | undefined,
+  year: number,
+  month: number,
+): boolean {
+  return parseIntakeInfoList(raw ?? '').some(
+    (intake) => intake.year === year && intake.month === month,
+  );
+}
+
+function checkedStagingDeadline(dto: {
+  applicationDeadline?: string;
+  applicationFee?: string;
+}): Record<string, string> {
+  const hasDeadline = dto.applicationDeadline !== undefined;
+  const hasFee = dto.applicationFee !== undefined;
+  if (!hasDeadline && !hasFee) {
+    throw new BadRequestException(
+      'Send an application deadline, an application fee, or both',
+    );
+  }
+  const staging: Record<string, string> = {};
+  if (hasDeadline) {
+    const text = (dto.applicationDeadline ?? '').trim();
+    if (text && !/^\d{2}\/\d{2}\/\d{4}$/.test(text)) {
+      throw new BadRequestException('Application deadline must be MM/DD/YYYY');
+    }
+    staging.applicationDeadline = text;
+  }
+  if (hasFee) {
+    const text = (dto.applicationFee ?? '').trim();
+    if (text && !/^\d+(\.\d+)?$/.test(text)) {
+      throw new BadRequestException(
+        `applicationFee: "${text}" is not a plain number (no commas, currency symbols or spaces)`,
+      );
+    }
+    staging.applicationFee = text;
+  }
+  return staging;
+}
+
+function checkedScholarshipFills(
+  fills: { name: string; amount: string; metadata: string }[],
+): ScholarshipMetaFill[] {
+  return fills.map((fill) => {
+    const amount = scholarshipAmountNumber(fill.amount);
+    if (amount == null || amount <= 0) {
+      throw new BadRequestException('Scholarship amount must be greater than 0');
+    }
+    if (!parseMetaDataItems(fill.metadata)) {
+      throw new BadRequestException(
+        'Scholarship metadata must be valid MetaDataItem[] JSON',
+      );
+    }
+    return {
+      name: fill.name.trim().toLowerCase(),
+      amount,
+      metadata: fill.metadata.trim(),
+    };
+  });
 }
 
 function courseItem(

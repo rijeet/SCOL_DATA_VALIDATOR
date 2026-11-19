@@ -1,6 +1,15 @@
-import { ApiProperty } from '@nestjs/swagger';
+import { ApiProperty, ApiPropertyOptional } from '@nestjs/swagger';
 import { Type } from 'class-transformer';
-import { IsInt, IsString, IsUUID, Max, MaxLength, Min, MinLength } from 'class-validator';
+import {
+  IsInt,
+  IsOptional,
+  IsString,
+  IsUUID,
+  Max,
+  MaxLength,
+  Min,
+  MinLength,
+} from 'class-validator';
 
 export class RemapDashboardIntakesRequestDto {
   @ApiProperty({ description: 'sys_Universities id' })
@@ -34,6 +43,38 @@ export class RemapDashboardIntakesRequestDto {
   @Min(1)
   @Max(12)
   toMonth!: number;
+}
+
+export class SetDashboardIntakeDeadlineRequestDto {
+  @ApiProperty({ description: 'sys_Universities id' })
+  @IsUUID()
+  uniId!: string;
+
+  @ApiProperty()
+  @Type(() => Number)
+  @IsInt()
+  @Min(2000)
+  @Max(2100)
+  year!: number;
+
+  @ApiProperty({ description: '1–12' })
+  @Type(() => Number)
+  @IsInt()
+  @Min(1)
+  @Max(12)
+  month!: number;
+
+  @ApiPropertyOptional({ description: 'MM/DD/YYYY, or empty to clear' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(10)
+  applicationDeadline?: string;
+
+  @ApiPropertyOptional({ description: 'Plain number, or empty to clear' })
+  @IsOptional()
+  @IsString()
+  @MaxLength(16)
+  applicationFee?: string;
 }
 
 export class RemapDashboardEnglishScoresRequestDto {
