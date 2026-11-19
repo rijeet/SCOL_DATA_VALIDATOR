@@ -150,6 +150,8 @@ export type DashboardDegreeCourseItem = {
   rowIndex: number | null;
   rowCount: number | null;
   score?: string | null;
+  applicationDeadline?: string | null;
+  applicationFee?: string | null;
 };
 
 export type DashboardDegreeCourseList = {

@@ -210,6 +210,35 @@ export class DataEntryDashboardService {
       .andWhere('i.intakeMonth = :month', { month })
       .orderBy('c.courseName', 'ASC')
       .getMany();
+    const feeRows = await this.db
+      .Set(UniCourseIntakes)
+      .createQueryBuilder('i')
+      .innerJoin(UniCourses, 'c', 'c.id = i.uniCourseId AND c.deletedAt IS NULL')
+      .where('i.deletedAt IS NULL')
+      .andWhere('i.isActive = true')
+      .andWhere('c.uniId = :uniId', { uniId })
+      .andWhere('i.intakeYear = :year', { year })
+      .andWhere('i.intakeMonth = :month', { month })
+      .select('c.id', 'courseId')
+      .addSelect('i.applicationDeadline', 'deadline')
+      .addSelect('i.applicationFee', 'fee')
+      .getRawMany<{
+        courseId: string;
+        deadline: string | Date | null;
+        fee: string | null;
+      }>();
+    const feeByCourse = new Map<
+      string,
+      { deadline: string; fee: string }
+    >();
+    for (const fee of feeRows) {
+      if (feeByCourse.has(fee.courseId)) continue;
+      feeByCourse.set(fee.courseId, {
+        deadline: formatPreviewDeadline(fee.deadline),
+        fee: (fee.fee ?? '').trim(),
+      });
+    }
+
     const seenCourse = new Set<string>();
     const courses = catalog.filter((row) => {
       if (seenCourse.has(row.id)) return false;
@@ -266,6 +295,8 @@ export class DataEntryDashboardService {
           batchId: hit?.batchId ?? null,
           rowIndex: hit?.rowIndex ?? null,
           rowCount: hit?.rowCount ?? null,
+          applicationDeadline: feeByCourse.get(row.id)?.deadline || null,
+          applicationFee: feeByCourse.get(row.id)?.fee || null,
         };
       }),
     };
@@ -2110,6 +2141,15 @@ export class DataEntryDashboardService {
       },
     };
   }
+}
+
+function formatPreviewDeadline(value: string | Date | null | undefined): string {
+  if (value == null || value === '') return '';
+  const text =
+    value instanceof Date ? value.toISOString().slice(0, 10) : String(value).slice(0, 10);
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(text);
+  if (!match) return String(value);
+  return `${match[2]}/${match[3]}/${match[1]}`;
 }
 
 function intakeMatches(

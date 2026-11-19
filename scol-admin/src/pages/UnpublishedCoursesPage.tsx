@@ -121,6 +121,8 @@ type DegreeCourse = {
   courseName: string;
   programmeName: string | null;
   score?: string | null;
+  applicationDeadline?: string | null;
+  applicationFee?: string | null;
 };
 
 const MONTHS = [
@@ -225,6 +227,9 @@ export function UnpublishedCoursesPage() {
   const [confirmIntake, setConfirmIntake] = useState(false);
   const [deadlineBatchId, setDeadlineBatchId] = useState('');
   const [deadlineKey, setDeadlineKey] = useState('');
+  const [deadlineCourses, setDeadlineCourses] = useState<DegreeCourse[] | null>(null);
+  const [deadlineCoursesLoading, setDeadlineCoursesLoading] = useState(false);
+  const [deadlineListTick, setDeadlineListTick] = useState(0);
   const [deadlineDate, setDeadlineDate] = useState('');
   const [deadlineFee, setDeadlineFee] = useState('');
   const [confirmDeadline, setConfirmDeadline] = useState(false);
@@ -520,6 +525,38 @@ export function UnpublishedCoursesPage() {
   const selectedDeadline = deadlineUni?.intakes.find(
     (i) => `${i.year}-${i.month}` === deadlineKey,
   );
+
+  useEffect(() => {
+    if (!deadlineUni || !selectedDeadline) {
+      setDeadlineCourses(null);
+      return;
+    }
+    let cancelled = false;
+    setDeadlineCoursesLoading(true);
+    const params = new URLSearchParams({
+      batchId: deadlineUni.batchId,
+      year: String(selectedDeadline.year),
+      month: String(selectedDeadline.month),
+    });
+    apiFetch<{ courses: DegreeCourse[] }>(
+      `/data-entry/unpublished/intakes/courses?${params}`,
+    )
+      .then((data) => {
+        if (!cancelled) setDeadlineCourses(data.courses);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setDeadlineCourses([]);
+          setError(e instanceof Error ? e.message : 'Failed to load deadline courses');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDeadlineCoursesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [deadlineUni?.batchId, selectedDeadline?.year, selectedDeadline?.month, deadlineListTick]);
 
   useEffect(() => {
     if (!intakeUni || !selectedIntake) {
@@ -1440,6 +1477,44 @@ export function UnpublishedCoursesPage() {
             })}
           </div>
           {selectedDeadline && deadlineUni && (
+            <ul className="mt-3 max-h-64 overflow-y-auto text-sm">
+              {deadlineCoursesLoading && (
+                <li className="font-bold text-slate-500">Loading courses…</li>
+              )}
+              {(deadlineCourses ?? []).map((course) => (
+                <li key={`${course.batchId}:${course.rowIndex}`}>
+                  <button
+                    type="button"
+                    className="flex w-full items-center justify-between gap-3 border-b border-slate-100 py-1.5 text-left text-slate-800 hover:text-emerald-800"
+                    onClick={() => {
+                      setWorkSession({
+                        batchId: course.batchId,
+                        rowIndex: course.rowIndex,
+                        universityKey: course.universityKey,
+                        rowCount: course.rowCount,
+                      });
+                      window.open(
+                        `/work/${course.batchId}/rows/${course.rowIndex}`,
+                        '_blank',
+                        'noopener',
+                      );
+                    }}
+                  >
+                    <span className="min-w-0 truncate font-bold">{course.courseName}</span>
+                    <span className="shrink-0 text-xs font-bold text-slate-600">
+                      {course.applicationDeadline || 'No deadline'}
+                      {' · '}
+                      {course.applicationFee || 'No fee'}
+                    </span>
+                  </button>
+                </li>
+              ))}
+              {!deadlineCoursesLoading && (deadlineCourses ?? []).length === 0 && (
+                <li className="font-bold text-slate-500">No courses</li>
+              )}
+            </ul>
+          )}
+          {selectedDeadline && deadlineUni && (
             <div className="mt-4 flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
               <label className="text-sm font-bold text-slate-700">
                 Application deadline
@@ -2033,7 +2108,10 @@ export function UnpublishedCoursesPage() {
               applicationFee: deadlineFee.trim(),
             },
             'Updated deadline on',
-          ).then(() => setConfirmDeadline(false));
+          ).then(() => {
+            setConfirmDeadline(false);
+            setDeadlineListTick((tick) => tick + 1);
+          });
         }}
       >
         This updates application deadline and fee on unpublished course rows only.

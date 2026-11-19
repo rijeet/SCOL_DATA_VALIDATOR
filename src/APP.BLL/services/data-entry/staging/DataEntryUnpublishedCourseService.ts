@@ -438,6 +438,8 @@ export class DataEntryUnpublishedCourseService {
         courseName:
           (row.fields.courseName ?? '').trim() || `Row ${row.rowIndex + 1}`,
         programmeName: (row.fields.programmeName ?? '').trim() || null,
+        applicationDeadline: (row.fields.applicationDeadline ?? '').trim() || null,
+        applicationFee: (row.fields.applicationFee ?? '').trim() || null,
       });
     }
     courses.sort((a, b) => a.courseName.localeCompare(b.courseName));

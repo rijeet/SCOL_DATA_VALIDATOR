@@ -123,6 +123,8 @@ export type UnpublishedDegreeCourseItem = {
   courseName: string;
   programmeName: string | null;
   score?: string | null;
+  applicationDeadline?: string | null;
+  applicationFee?: string | null;
 };
 
 export type UnpublishedDegreeCourseList = {

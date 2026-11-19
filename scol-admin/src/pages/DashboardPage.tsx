@@ -84,6 +84,8 @@ type DegreeCourseItem = {
   rowIndex: number | null;
   rowCount: number | null;
   score?: string | null;
+  applicationDeadline?: string | null;
+  applicationFee?: string | null;
 };
 
 type DegreeCourseList = {
@@ -314,6 +316,9 @@ export function DashboardPage() {
   const [toeflBusy, setToeflBusy] = useState(false);
   const [deadlineUniId, setDeadlineUniId] = useState('');
   const [deadlineKey, setDeadlineKey] = useState('');
+  const [deadlineCourses, setDeadlineCourses] = useState<DegreeCourseItem[] | null>(null);
+  const [deadlineCoursesLoading, setDeadlineCoursesLoading] = useState(false);
+  const [deadlineListTick, setDeadlineListTick] = useState(0);
   const [deadlineDate, setDeadlineDate] = useState('');
   const [deadlineFee, setDeadlineFee] = useState('');
   const [confirmDeadline, setConfirmDeadline] = useState(false);
@@ -605,6 +610,43 @@ export function DashboardPage() {
   const selectedDeadline = selectedDeadlineUni?.intakes.find(
     (i) => String(i.intakeKey) === deadlineKey,
   );
+
+  useEffect(() => {
+    if (!selectedDeadlineUni || !selectedDeadline) {
+      setDeadlineCourses(null);
+      return;
+    }
+    let cancelled = false;
+    setDeadlineCoursesLoading(true);
+    const params = new URLSearchParams({
+      uniId: selectedDeadlineUni.uniId,
+      year: String(selectedDeadline.year),
+      month: String(selectedDeadline.month),
+    });
+    apiFetch<{ courses: DegreeCourseItem[] }>(
+      `/data-entry/dashboard/intakes/courses?${params}`,
+    )
+      .then((data) => {
+        if (!cancelled) setDeadlineCourses(data.courses);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setDeadlineCourses([]);
+          setError(e instanceof Error ? e.message : 'Failed to load deadline courses');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setDeadlineCoursesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [
+    selectedDeadlineUni?.uniId,
+    selectedDeadline?.year,
+    selectedDeadline?.month,
+    deadlineListTick,
+  ]);
 
   const fromIntake = selectedIntakeUni?.intakes.find(
     (i) => String(i.intakeKey) === fromKey,
@@ -1052,6 +1094,7 @@ export function DashboardPage() {
       );
       setPayload(res.payload);
       setConfirmDeadline(false);
+      setDeadlineListTick((tick) => tick + 1);
       setRemapNotice(
         `Updated deadline and application fee on ${result.updated} rows at ${selectedDeadlineUni.uniName}.`,
       );
@@ -2281,6 +2324,40 @@ export function DashboardPage() {
                 </div>
               ) : (
                 <p className="text-sm font-bold text-slate-500">No intake dates in catalog.</p>
+              )}
+              {selectedDeadline && selectedDeadlineUni && (
+                <ul className="mt-3 max-h-64 overflow-y-auto text-sm">
+                  {deadlineCoursesLoading && (
+                    <li className="font-bold text-slate-500">Loading courses…</li>
+                  )}
+                  {(deadlineCourses ?? []).map((course) => {
+                    const editable = course.batchId != null && course.rowIndex != null;
+                    return (
+                      <li key={`${course.courseName}:${course.rowIndex}`}>
+                        <button
+                          type="button"
+                          disabled={!editable}
+                          onClick={() => openCourseRow(course)}
+                          className={`flex w-full items-center justify-between gap-3 border-b border-slate-100 py-1.5 text-left ${
+                            editable
+                              ? 'text-slate-800 hover:text-emerald-800'
+                              : 'cursor-default text-slate-800'
+                          }`}
+                        >
+                          <span className="min-w-0 truncate font-bold">{course.courseName}</span>
+                          <span className="shrink-0 text-xs font-bold text-slate-600">
+                            {course.applicationDeadline || 'No deadline'}
+                            {' · '}
+                            {course.applicationFee || 'No fee'}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                  {!deadlineCoursesLoading && (deadlineCourses ?? []).length === 0 && (
+                    <li className="font-bold text-slate-500">No courses</li>
+                  )}
+                </ul>
               )}
               {selectedDeadline && selectedDeadlineUni && (
                 <div className="mt-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
