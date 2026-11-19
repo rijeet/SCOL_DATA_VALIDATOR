@@ -83,6 +83,30 @@ const ENGLISH_SCORE_RULES: Record<
   pteMinSection: { max: 90, testLabel: 'PTE section' },
 };
 
+function plainNumberError(raw: string): string | null {
+  const text = raw.trim();
+  if (!text) return null;
+  if (/^\d+(\.\d+)?$/.test(text)) return null;
+  return `"${text}" is not a plain number (no commas, currency symbols or spaces)`;
+}
+
+function scholarshipAmountNumber(raw: string | undefined): number | null {
+  const text = (raw ?? '').trim();
+  if (!/^\d+(\.\d+)?$/.test(text)) return null;
+  return Number(text);
+}
+
+function scholarshipMetaMismatch(row: CourseRowFields): string | null {
+  const meta = (row.scholarshipMetaData ?? '').trim();
+  const amount = scholarshipAmountNumber(row.scholarshipAmount);
+  if (amount != null && amount > 0) {
+    if (!meta) return 'Required when scholarship amount is greater than 0';
+    return null;
+  }
+  if (meta) return 'Must be empty when there is no scholarship or the amount is 0';
+  return null;
+}
+
 function parseDecimal(raw: string): number | null {
   const t = raw.trim().replace(/,/g, '');
   if (!t) return null;
@@ -206,6 +230,12 @@ export function validateCourseRowScoreAndCompleteness(
     if (raw && parseDecimal(raw) === null) errors[key] = 'Must be a number when set';
   }
 
+  for (const key of ['scholarshipAmount', 'tuitionFee'] as const) {
+    const raw = (row[key] ?? '').trim();
+    const plain = plainNumberError(raw);
+    if (plain) errors[key] = plain;
+  }
+
   const deadline = (row.applicationDeadline ?? '').trim();
   if (deadline) {
     const match = /^(\d{2})\/(\d{2})\/(\d{4})$/.exec(deadline);
@@ -222,6 +252,14 @@ export function validateCourseRowScoreAndCompleteness(
     }
   }
   Object.assign(errors, requiredMissingErrors(row));
+  const metaError = scholarshipMetaMismatch(row);
+  if (metaError) errors.scholarshipMetaData = metaError;
+  else if (
+    scholarshipAmountNumber(row.scholarshipAmount) == null ||
+    scholarshipAmountNumber(row.scholarshipAmount)! <= 0
+  ) {
+    if (!(row.scholarshipMetaData ?? '').trim()) delete errors.scholarshipMetaData;
+  }
 
   const minDeg = (row.minDegreeName ?? '').trim();
   if (minDeg && !canonicalEntryDegreeName(minDeg)) {

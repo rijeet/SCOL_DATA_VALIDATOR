@@ -141,7 +141,15 @@ export class CourseRowValidator {
     ] as const;
     for (const c of feeCols) {
       const x = (row[c] ?? '').trim();
-      if (x !== '' && parseRequiredDecimal(x) === null) {
+      if (!x) continue;
+      if (c === 'tuitionFee' || c === 'scholarshipAmount') {
+        if (!/^\d+(\.\d+)?$/.test(x)) {
+          errors[c] =
+            `"${x}" is not a plain number (no commas, currency symbols or spaces)`;
+        }
+        continue;
+      }
+      if (parseRequiredDecimal(x) === null) {
         errors[c] = 'Must be a number when set';
       }
     }
