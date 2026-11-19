@@ -801,11 +801,20 @@ export class DataEntryUnpublishedCourseService {
 
   async scholarshipMetaPreview(): Promise<ScholarshipMetaPreview> {
     const loaded = await this.loadLatest();
-    const samples = loaded.flatMap(({ rows }) =>
+    const samples = loaded.flatMap(({ batch, rows }) =>
       rows.map((row) => ({
         name: row.fields.scholarshipName ?? '',
         amount: row.fields.scholarshipAmount ?? '',
         metadata: row.fields.scholarshipMetaData ?? '',
+        course: {
+          courseName:
+            (row.fields.courseName ?? '').trim() || `Row ${row.rowIndex + 1}`,
+          uniName: uniLabel(batch),
+          batchId: batch.id,
+          rowIndex: row.rowIndex,
+          rowCount: batch.rowCount,
+          universityKey: batch.universityKey,
+        },
       })),
     );
     return collectScholarshipMetaPreview(samples);

@@ -1,12 +1,23 @@
+export type ScholarshipMetaCourse = {
+  courseName: string;
+  uniName: string;
+  batchId: string;
+  rowIndex: number;
+  rowCount: number;
+  universityKey: string;
+};
+
 export type ScholarshipMetaClearGroup = {
   metadata: string;
   courseCount: number;
+  courses: ScholarshipMetaCourse[];
 };
 
 export type ScholarshipMetaMissingGroup = {
   name: string;
   amount: string;
   courseCount: number;
+  courses: ScholarshipMetaCourse[];
 };
 
 export type ScholarshipMetaPreview = {
@@ -18,6 +29,7 @@ export type ScholarshipMetaSample = {
   name: string;
   amount: string;
   metadata: string;
+  course?: ScholarshipMetaCourse | null;
 };
 
 export type ScholarshipMetaFill = {
@@ -59,14 +71,31 @@ export function collectScholarshipMetaPreview(
       const amountKey = String(amount);
       const key = `${name.toLowerCase()}\0${amountKey}`;
       const row = missing.get(key);
-      if (row) row.courseCount += 1;
-      else missing.set(key, { name, amount: amountKey, courseCount: 1 });
+      if (row) {
+        row.courseCount += 1;
+        pushCourse(row.courses, sample.course);
+      } else {
+        missing.set(key, {
+          name,
+          amount: amountKey,
+          courseCount: 1,
+          courses: sample.course ? [sample.course] : [],
+        });
+      }
       continue;
     }
     if (!meta) continue;
     const row = clear.get(meta);
-    if (row) row.courseCount += 1;
-    else clear.set(meta, { metadata: meta, courseCount: 1 });
+    if (row) {
+      row.courseCount += 1;
+      pushCourse(row.courses, sample.course);
+    } else {
+      clear.set(meta, {
+        metadata: meta,
+        courseCount: 1,
+        courses: sample.course ? [sample.course] : [],
+      });
+    }
   }
   const byCount = (
     a: { courseCount: number },
@@ -76,6 +105,21 @@ export function collectScholarshipMetaPreview(
     clearGroups: [...clear.values()].sort(byCount),
     missingGroups: [...missing.values()].sort(byCount),
   };
+}
+
+function pushCourse(
+  courses: ScholarshipMetaCourse[],
+  course: ScholarshipMetaCourse | null | undefined,
+) {
+  if (!course) return;
+  if (
+    courses.some(
+      (item) => item.batchId === course.batchId && item.rowIndex === course.rowIndex,
+    )
+  ) {
+    return;
+  }
+  courses.push(course);
 }
 
 export function rewriteScholarshipMeta(

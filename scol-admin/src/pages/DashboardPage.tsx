@@ -55,9 +55,23 @@ type ToeflPreview = {
   }[];
 };
 
+type ScholarshipMetaCourse = {
+  courseName: string;
+  uniName: string;
+  batchId: string;
+  rowIndex: number;
+  rowCount: number;
+  universityKey: string;
+};
+
 type ScholarshipMetaPreview = {
-  clearGroups: { metadata: string; courseCount: number }[];
-  missingGroups: { name: string; amount: string; courseCount: number }[];
+  clearGroups: { metadata: string; courseCount: number; courses: ScholarshipMetaCourse[] }[];
+  missingGroups: {
+    name: string;
+    amount: string;
+    courseCount: number;
+    courses: ScholarshipMetaCourse[];
+  }[];
 };
 
 type DegreeCourseItem = {
@@ -298,6 +312,8 @@ export function DashboardPage() {
   const [toeflOpen, setToeflOpen] = useState(false);
   const [toeflEdits, setToeflEdits] = useState<Record<string, string>>({});
   const [toeflBusy, setToeflBusy] = useState(false);
+  const [deadlineUniId, setDeadlineUniId] = useState('');
+  const [deadlineKey, setDeadlineKey] = useState('');
   const [deadlineDate, setDeadlineDate] = useState('');
   const [deadlineFee, setDeadlineFee] = useState('');
   const [confirmDeadline, setConfirmDeadline] = useState(false);
@@ -570,6 +586,25 @@ export function DashboardPage() {
       setFromKey('');
     }
   }, [selectedIntakeUni, intakeUniId]);
+
+  const selectedDeadlineUni =
+    intakeUnis.find((u) => u.uniId === deadlineUniId) ?? intakeUnis[0] ?? null;
+
+  useEffect(() => {
+    if (!selectedDeadlineUni) {
+      setDeadlineUniId('');
+      setDeadlineKey('');
+      return;
+    }
+    if (deadlineUniId !== selectedDeadlineUni.uniId) {
+      setDeadlineUniId(selectedDeadlineUni.uniId);
+      setDeadlineKey('');
+    }
+  }, [selectedDeadlineUni, deadlineUniId]);
+
+  const selectedDeadline = selectedDeadlineUni?.intakes.find(
+    (i) => String(i.intakeKey) === deadlineKey,
+  );
 
   const fromIntake = selectedIntakeUni?.intakes.find(
     (i) => String(i.intakeKey) === fromKey,
@@ -993,7 +1028,7 @@ export function DashboardPage() {
   }
 
   async function saveDeadline() {
-    if (!selectedIntakeUni || !fromIntake) return;
+    if (!selectedDeadlineUni || !selectedDeadline) return;
     setSavingDeadline(true);
     setError(null);
     setRemapNotice(null);
@@ -1003,9 +1038,9 @@ export function DashboardPage() {
         {
           method: 'POST',
           body: JSON.stringify({
-            uniId: selectedIntakeUni.uniId,
-            year: fromIntake.year,
-            month: fromIntake.month,
+            uniId: selectedDeadlineUni.uniId,
+            year: selectedDeadline.year,
+            month: selectedDeadline.month,
             applicationDeadline: deadlineDate.trim(),
             applicationFee: deadlineFee.trim(),
           }),
@@ -1018,7 +1053,7 @@ export function DashboardPage() {
       setPayload(res.payload);
       setConfirmDeadline(false);
       setRemapNotice(
-        `Updated deadline and application fee on ${result.updated} rows at ${selectedIntakeUni.uniName}.`,
+        `Updated deadline and application fee on ${result.updated} rows at ${selectedDeadlineUni.uniName}.`,
       );
     } catch (e) {
       setError(e instanceof Error ? e.message : 'Deadline update failed');
@@ -1690,22 +1725,49 @@ export function DashboardPage() {
                     <p className="text-sm font-bold text-slate-500">Checking courses…</p>
                   )}
                   {schMetaPreview?.clearGroups.map((group) => (
-                    <p
-                      key={group.metadata}
-                      className="mb-2 text-sm font-medium text-slate-700"
-                    >
-                      Clear metadata on {group.courseCount} courses with amount 0
-                      or no scholarship.
-                      <span className="mt-1 block truncate text-xs text-slate-500">
-                        {group.metadata}
-                      </span>
-                    </p>
+                    <div key={group.metadata} className="mb-3">
+                      <p className="text-sm font-medium text-slate-700">
+                        Clear metadata on {group.courseCount} courses with amount 0
+                        or no scholarship.
+                      </p>
+                      <p className="mt-1 truncate text-xs text-slate-500">{group.metadata}</p>
+                      <ul className="mt-1 max-h-40 overflow-y-auto">
+                        {(group.courses ?? []).map((course) => (
+                          <li key={`${course.batchId}:${course.rowIndex}`}>
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between gap-3 py-1 text-left text-sm font-bold text-slate-800 hover:text-emerald-800"
+                              onClick={() =>
+                                openCourseRow({
+                                  uniId: '',
+                                  uniName: course.uniName,
+                                  courseName: course.courseName,
+                                  programmeName: null,
+                                  universityKey: course.universityKey,
+                                  batchId: course.batchId,
+                                  rowIndex: course.rowIndex,
+                                  rowCount: course.rowCount,
+                                })
+                              }
+                            >
+                              <span className="min-w-0 truncate">
+                                {course.courseName}
+                                <span className="block truncate text-xs font-medium text-slate-500">
+                                  {course.uniName}
+                                </span>
+                              </span>
+                              <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
                   ))}
                   {schMetaPreview?.missingGroups.map((group) => {
                     const key = `${group.name}\0${group.amount}`;
                     return (
+                      <div key={key} className="mb-3">
                       <label
-                        key={key}
                         className="mb-2 block text-sm font-bold text-slate-700"
                       >
                         {group.name || 'Scholarship'} · {group.amount} ·{' '}
@@ -1723,6 +1785,37 @@ export function DashboardPage() {
                           }
                         />
                       </label>
+                      <ul className="mt-1 max-h-40 overflow-y-auto">
+                        {(group.courses ?? []).map((course) => (
+                          <li key={`${course.batchId}:${course.rowIndex}`}>
+                            <button
+                              type="button"
+                              className="flex w-full items-center justify-between gap-3 py-1 text-left text-sm font-bold text-slate-800 hover:text-emerald-800"
+                              onClick={() =>
+                                openCourseRow({
+                                  uniId: '',
+                                  uniName: course.uniName,
+                                  courseName: course.courseName,
+                                  programmeName: null,
+                                  universityKey: course.universityKey,
+                                  batchId: course.batchId,
+                                  rowIndex: course.rowIndex,
+                                  rowCount: course.rowCount,
+                                })
+                              }
+                            >
+                              <span className="min-w-0 truncate">
+                                {course.courseName}
+                                <span className="block truncate text-xs font-medium text-slate-500">
+                                  {course.uniName}
+                                </span>
+                              </span>
+                              <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+                            </button>
+                          </li>
+                        ))}
+                      </ul>
+                      </div>
                     );
                   })}
                   <button
@@ -2138,53 +2231,94 @@ export function DashboardPage() {
                   </div>
                 </div>
               )}
-              {fromIntake && selectedIntakeUni && (
-                <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
-                  <p className="text-sm font-bold text-slate-800">
-                    Update deadline and application fee
-                  </p>
-                  <p className="mt-1 text-xs font-medium text-slate-600">
-                    Applies to every course in {intakeLabel(fromIntake.year, fromIntake.month)} at{' '}
-                    {selectedIntakeUni.uniName}. Leave a box blank to clear that value. This does
-                    not move the intake month.
-                  </p>
-                  <div className="mt-3 flex flex-wrap items-end gap-3">
-                    <label className="text-sm font-bold text-slate-700">
-                      Application deadline
-                      <input
-                        placeholder="MM/DD/YYYY"
-                        className="mt-1 block w-36 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-medium"
-                        value={deadlineDate}
-                        onChange={(e) => setDeadlineDate(e.target.value)}
-                      />
-                    </label>
-                    <label className="text-sm font-bold text-slate-700">
-                      Application fee
-                      <input
-                        placeholder="5500"
-                        className="mt-1 block w-28 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-medium"
-                        value={deadlineFee}
-                        onChange={(e) => setDeadlineFee(e.target.value)}
-                      />
-                    </label>
-                    <button
-                      type="button"
-                      disabled={
-                        (!deadlineDate.trim() && !deadlineFee.trim()) ||
-                        (deadlineDate.trim() !== '' &&
-                          !/^\d{2}\/\d{2}\/\d{4}$/.test(deadlineDate.trim())) ||
-                        (deadlineFee.trim() !== '' &&
-                          !/^\d+(\.\d+)?$/.test(deadlineFee.trim()))
-                      }
-                      onClick={() => {
-                        setError(null);
-                        setConfirmDeadline(true);
-                      }}
-                      className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white disabled:opacity-40"
-                    >
-                      Update courses
-                    </button>
-                  </div>
+            </section>
+
+            <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="mb-1 inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-600">
+                <CalendarRange className="h-4 w-4" aria-hidden />
+                Deadline and application fee
+              </h2>
+              <p className="mb-3 text-sm font-medium text-slate-600">
+                Pick a university and intake, then set the deadline and fee for every course in that intake. Leave a box blank to clear that value.
+              </p>
+              <label className="mb-3 block text-sm font-bold text-slate-700">
+                University
+                <select
+                  className="mt-1 block min-w-64 rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-medium"
+                  value={selectedDeadlineUni?.uniId ?? ''}
+                  onChange={(e) => {
+                    setDeadlineUniId(e.target.value);
+                    setDeadlineKey('');
+                  }}
+                >
+                  {intakeUnis.length === 0 && <option value="">No intakes</option>}
+                  {intakeUnis.map((u) => (
+                    <option key={u.uniId} value={u.uniId}>
+                      {u.uniName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selectedDeadlineUni ? (
+                <div className="flex flex-wrap gap-2">
+                  {selectedDeadlineUni.intakes.map((i) => {
+                    const selected = String(i.intakeKey) === deadlineKey;
+                    return (
+                      <button
+                        key={i.intakeKey}
+                        type="button"
+                        onClick={() => setDeadlineKey(String(i.intakeKey))}
+                        className={`rounded-full border px-3 py-1.5 text-xs font-bold ${
+                          selected
+                            ? 'border-slate-900 bg-slate-900 text-white'
+                            : 'border-slate-200 bg-slate-50 text-slate-800'
+                        }`}
+                      >
+                        {intakeLabel(i.year, i.month)} · {i.courseCount}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-sm font-bold text-slate-500">No intake dates in catalog.</p>
+              )}
+              {selectedDeadline && selectedDeadlineUni && (
+                <div className="mt-4 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <label className="text-sm font-bold text-slate-700">
+                    Application deadline
+                    <input
+                      placeholder="MM/DD/YYYY"
+                      className="mt-1 block w-36 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-medium"
+                      value={deadlineDate}
+                      onChange={(e) => setDeadlineDate(e.target.value)}
+                    />
+                  </label>
+                  <label className="text-sm font-bold text-slate-700">
+                    Application fee
+                    <input
+                      placeholder="5500"
+                      className="mt-1 block w-28 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm font-medium"
+                      value={deadlineFee}
+                      onChange={(e) => setDeadlineFee(e.target.value)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={
+                      (!deadlineDate.trim() && !deadlineFee.trim()) ||
+                      (deadlineDate.trim() !== '' &&
+                        !/^\d{2}\/\d{2}\/\d{4}$/.test(deadlineDate.trim())) ||
+                      (deadlineFee.trim() !== '' &&
+                        !/^\d+(\.\d+)?$/.test(deadlineFee.trim()))
+                    }
+                    onClick={() => {
+                      setError(null);
+                      setConfirmDeadline(true);
+                    }}
+                    className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white disabled:opacity-40"
+                  >
+                    Update courses
+                  </button>
                 </div>
               )}
             </section>
@@ -2658,8 +2792,8 @@ export function DashboardPage() {
           }}
           onConfirm={() => void saveDeadline()}
         >
-          {fromIntake && selectedIntakeUni
-            ? `Update ${intakeLabel(fromIntake.year, fromIntake.month)} at ${selectedIntakeUni.uniName}. Deadline ${deadlineDate.trim() || 'cleared'}, application fee ${deadlineFee.trim() || 'cleared'}.`
+          {selectedDeadline && selectedDeadlineUni
+            ? `Update ${intakeLabel(selectedDeadline.year, selectedDeadline.month)} at ${selectedDeadlineUni.uniName}. Deadline ${deadlineDate.trim() || 'cleared'}, application fee ${deadlineFee.trim() || 'cleared'}.`
             : null}
         </ConfirmDialog>
 

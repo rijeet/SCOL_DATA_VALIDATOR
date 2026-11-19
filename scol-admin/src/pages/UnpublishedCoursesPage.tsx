@@ -93,9 +93,23 @@ type ToeflPreview = {
   }[];
 };
 
+type ScholarshipMetaCourse = {
+  courseName: string;
+  uniName: string;
+  batchId: string;
+  rowIndex: number;
+  rowCount: number;
+  universityKey: string;
+};
+
 type ScholarshipMetaPreview = {
-  clearGroups: { metadata: string; courseCount: number }[];
-  missingGroups: { name: string; amount: string; courseCount: number }[];
+  clearGroups: { metadata: string; courseCount: number; courses: ScholarshipMetaCourse[] }[];
+  missingGroups: {
+    name: string;
+    amount: string;
+    courseCount: number;
+    courses: ScholarshipMetaCourse[];
+  }[];
 };
 
 type DegreeCourse = {
@@ -209,6 +223,8 @@ export function UnpublishedCoursesPage() {
   const [toYear, setToYear] = useState(new Date().getFullYear());
   const [toMonth, setToMonth] = useState(9);
   const [confirmIntake, setConfirmIntake] = useState(false);
+  const [deadlineBatchId, setDeadlineBatchId] = useState('');
+  const [deadlineKey, setDeadlineKey] = useState('');
   const [deadlineDate, setDeadlineDate] = useState('');
   const [deadlineFee, setDeadlineFee] = useState('');
   const [confirmDeadline, setConfirmDeadline] = useState(false);
@@ -496,6 +512,13 @@ export function UnpublishedCoursesPage() {
   const intakeUni = intakeUnis.find((u) => u.batchId === intakeBatchId);
   const selectedIntake = intakeUni?.intakes.find(
     (i) => `${i.year}-${i.month}` === fromIntake,
+  );
+  useEffect(() => {
+    if (!deadlineBatchId && intakeUnis[0]) setDeadlineBatchId(intakeUnis[0].batchId);
+  }, [deadlineBatchId, intakeUnis]);
+  const deadlineUni = intakeUnis.find((u) => u.batchId === deadlineBatchId);
+  const selectedDeadline = deadlineUni?.intakes.find(
+    (i) => `${i.year}-${i.month}` === deadlineKey,
   );
 
   useEffect(() => {
@@ -1020,17 +1043,19 @@ export function UnpublishedCoursesPage() {
                 <p className="text-sm font-bold text-slate-500">Checking courses…</p>
               )}
               {schMetaPreview?.clearGroups.map((group) => (
-                <p key={group.metadata} className="mb-2 text-sm font-medium text-slate-700">
-                  Clear metadata on {group.courseCount} courses with amount 0 or no scholarship.
-                  <span className="mt-1 block truncate text-xs text-slate-500">
-                    {group.metadata}
-                  </span>
-                </p>
+                <div key={group.metadata} className="mb-3">
+                  <p className="text-sm font-medium text-slate-700">
+                    Clear metadata on {group.courseCount} courses with amount 0 or no scholarship.
+                  </p>
+                  <p className="mt-1 truncate text-xs text-slate-500">{group.metadata}</p>
+                  <MetaCourseList courses={group.courses ?? []} />
+                </div>
               ))}
               {schMetaPreview?.missingGroups.map((group) => {
                 const key = `${group.name}\0${group.amount}`;
                 return (
-                  <label key={key} className="mb-2 block text-sm font-bold text-slate-700">
+                  <div key={key} className="mb-3">
+                  <label className="mb-2 block text-sm font-bold text-slate-700">
                     {group.name || 'Scholarship'} · {group.amount} · {group.courseCount}
                     <textarea
                       className="mt-1 block w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs"
@@ -1045,6 +1070,8 @@ export function UnpublishedCoursesPage() {
                       }
                     />
                   </label>
+                  <MetaCourseList courses={group.courses ?? []} />
+                  </div>
                 );
               })}
               <button
@@ -1364,50 +1391,87 @@ export function UnpublishedCoursesPage() {
               </div>
             </div>
           )}
-          {selectedIntake && intakeUni && (
-            <div className="mt-3 rounded-lg border border-emerald-200 bg-emerald-50/60 p-3">
-              <p className="text-sm font-bold text-slate-800">
-                Update deadline and application fee
-              </p>
-              <p className="mt-1 text-xs font-medium text-slate-600">
-                Applies to every unpublished course in{' '}
-                {MONTHS[selectedIntake.month - 1]}-{String(selectedIntake.year).slice(-2)} at{' '}
-                {intakeUni.uniName}. Leave a box blank to clear that value.
-              </p>
-              <div className="mt-3 flex flex-wrap items-end gap-2">
-                <label className="text-sm font-bold text-slate-700">
-                  Application deadline
-                  <input
-                    placeholder="MM/DD/YYYY"
-                    className="mt-1 block w-36 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm"
-                    value={deadlineDate}
-                    onChange={(e) => setDeadlineDate(e.target.value)}
-                  />
-                </label>
-                <label className="text-sm font-bold text-slate-700">
-                  Application fee
-                  <input
-                    placeholder="5500"
-                    className="mt-1 block w-28 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm"
-                    value={deadlineFee}
-                    onChange={(e) => setDeadlineFee(e.target.value)}
-                  />
-                </label>
+        </section>
+
+        <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+          <h2 className="mb-1 inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-600">
+            <CalendarRange className="h-4 w-4" aria-hidden />
+            Deadline and application fee
+          </h2>
+          <p className="mb-3 text-sm font-medium text-slate-600">
+            Pick a university and intake, then set the deadline and fee for every unpublished course in that intake. Leave a box blank to clear that value.
+          </p>
+          <label className="mb-3 block text-sm font-bold text-slate-700">
+            University
+            <select
+              className="mt-1 block min-w-64 rounded-lg border border-slate-300 px-2 py-1.5 text-sm"
+              value={deadlineBatchId}
+              onChange={(e) => {
+                setDeadlineBatchId(e.target.value);
+                setDeadlineKey('');
+              }}
+            >
+              {intakeUnis.length === 0 && <option value="">No intakes</option>}
+              {intakeUnis.map((u) => (
+                <option key={u.batchId} value={u.batchId}>
+                  {u.uniName}
+                </option>
+              ))}
+            </select>
+          </label>
+          <div className="flex flex-wrap gap-2">
+            {(deadlineUni?.intakes ?? []).map((i) => {
+              const key = `${i.year}-${i.month}`;
+              const selected = key === deadlineKey;
+              return (
                 <button
+                  key={key}
                   type="button"
-                  className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white disabled:opacity-40"
-                  disabled={
-                    (!deadlineDate.trim() && !deadlineFee.trim()) ||
-                    (deadlineDate.trim() !== '' &&
-                      !/^\d{2}\/\d{2}\/\d{4}$/.test(deadlineDate.trim())) ||
-                    (deadlineFee.trim() !== '' &&
-                      !/^\d+(\.\d+)?$/.test(deadlineFee.trim()))
-                  }
-                  onClick={() => setConfirmDeadline(true)}
+                  onClick={() => setDeadlineKey(key)}
+                  className={`rounded-full border px-3 py-1.5 text-xs font-bold ${
+                    selected
+                      ? 'border-slate-900 bg-slate-900 text-white'
+                      : 'border-slate-200 bg-slate-50 text-slate-800'
+                  }`}
                 >
-                  Update courses
+                  {MONTHS[i.month - 1]}-{String(i.year).slice(-2)} · {i.courseCount}
                 </button>
-              </div>
+              );
+            })}
+          </div>
+          {selectedDeadline && deadlineUni && (
+            <div className="mt-4 flex flex-wrap items-end gap-2 rounded-lg border border-slate-200 bg-slate-50 p-3">
+              <label className="text-sm font-bold text-slate-700">
+                Application deadline
+                <input
+                  placeholder="MM/DD/YYYY"
+                  className="mt-1 block w-36 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm"
+                  value={deadlineDate}
+                  onChange={(e) => setDeadlineDate(e.target.value)}
+                />
+              </label>
+              <label className="text-sm font-bold text-slate-700">
+                Application fee
+                <input
+                  placeholder="5500"
+                  className="mt-1 block w-28 rounded-lg border border-slate-300 bg-white px-2 py-1.5 text-sm"
+                  value={deadlineFee}
+                  onChange={(e) => setDeadlineFee(e.target.value)}
+                />
+              </label>
+              <button
+                type="button"
+                className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white disabled:opacity-40"
+                disabled={
+                  (!deadlineDate.trim() && !deadlineFee.trim()) ||
+                  (deadlineDate.trim() !== '' &&
+                    !/^\d{2}\/\d{2}\/\d{4}$/.test(deadlineDate.trim())) ||
+                  (deadlineFee.trim() !== '' && !/^\d+(\.\d+)?$/.test(deadlineFee.trim()))
+                }
+                onClick={() => setConfirmDeadline(true)}
+              >
+                Update courses
+              </button>
             </div>
           )}
         </section>
@@ -1958,13 +2022,13 @@ export function UnpublishedCoursesPage() {
         busy={busy}
         onCancel={() => setConfirmDeadline(false)}
         onConfirm={() => {
-          if (!selectedIntake || !intakeUni) return;
+          if (!selectedDeadline || !deadlineUni) return;
           void run(
             '/data-entry/unpublished/intakes/deadline',
             {
-              batchId: intakeUni.batchId,
-              year: selectedIntake.year,
-              month: selectedIntake.month,
+              batchId: deadlineUni.batchId,
+              year: selectedDeadline.year,
+              month: selectedDeadline.month,
               applicationDeadline: deadlineDate.trim(),
               applicationFee: deadlineFee.trim(),
             },
@@ -2048,5 +2112,42 @@ function Kpi({
       </p>
       <p className="mt-2 text-2xl font-bold text-slate-900">{value}</p>
     </div>
+  );
+}
+
+function MetaCourseList({ courses }: { courses: ScholarshipMetaCourse[] }) {
+  if (courses.length === 0) return null;
+  return (
+    <ul className="mt-1 max-h-40 overflow-y-auto">
+      {courses.map((course) => (
+        <li key={`${course.batchId}:${course.rowIndex}`}>
+          <button
+            type="button"
+            className="flex w-full items-center justify-between gap-3 py-1 text-left text-sm font-bold text-slate-800 hover:text-emerald-800"
+            onClick={() => {
+              setWorkSession({
+                batchId: course.batchId,
+                rowIndex: course.rowIndex,
+                universityKey: course.universityKey,
+                rowCount: course.rowCount,
+              });
+              window.open(
+                `/work/${course.batchId}/rows/${course.rowIndex}`,
+                '_blank',
+                'noopener',
+              );
+            }}
+          >
+            <span className="min-w-0 truncate">
+              {course.courseName}
+              <span className="block truncate text-xs font-medium text-slate-500">
+                {course.uniName}
+              </span>
+            </span>
+            <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+          </button>
+        </li>
+      ))}
+    </ul>
   );
 }

@@ -733,13 +733,21 @@ export class DataEntryDashboardService {
     for (const batch of await this.latestCourseBatches()) {
       const rows = await this.db.Set(DataEntryCourseRows).find({
         where: { batchId: batch.id },
-        select: ['fields'],
       });
       for (const row of rows) {
         samples.push({
           name: row.fields?.scholarshipName ?? '',
           amount: row.fields?.scholarshipAmount ?? '',
           metadata: row.fields?.scholarshipMetaData ?? '',
+          course: {
+            courseName:
+              (row.fields?.courseName ?? '').trim() || `Row ${row.rowIndex + 1}`,
+            uniName: (batch.displayName || batch.universityKey || 'University').trim(),
+            batchId: batch.id,
+            rowIndex: row.rowIndex,
+            rowCount: batch.rowCount,
+            universityKey: batch.universityKey,
+          },
         });
       }
     }
