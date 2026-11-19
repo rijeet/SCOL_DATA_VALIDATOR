@@ -33,6 +33,40 @@ export type DashboardEnglishTestItem = {
   maxScore: number | null;
 };
 
+export type DashboardEnglishScoreGroup = {
+  overall: string;
+  section: string;
+  courseCount: number;
+};
+
+export type DashboardEnglishTestGroups = {
+  id: string;
+  name: string;
+  groups: DashboardEnglishScoreGroup[];
+};
+
+export type DashboardUniEnglishTests = {
+  uniId: string;
+  uniName: string;
+  countryId: string;
+  tests: DashboardEnglishTestGroups[];
+};
+
+export type DashboardTuitionGroup = {
+  currency: string;
+  amount: string;
+  year: number;
+  month: number;
+  courseCount: number;
+};
+
+export type DashboardUniTuition = {
+  uniId: string;
+  uniName: string;
+  countryId: string;
+  groups: DashboardTuitionGroup[];
+};
+
 export type DashboardScholarshipItem = {
   uniId: string;
   uniName: string;
@@ -89,6 +123,8 @@ export type DashboardSnapshotPayload = {
   byCountry: DashboardCountrySlice[];
   degrees: DashboardDegreeItem[];
   englishTests: DashboardEnglishTestItem[];
+  englishByUni: DashboardUniEnglishTests[];
+  tuitionByUni: DashboardUniTuition[];
   scholarships: DashboardScholarshipItem[];
   intakesByUni: DashboardUniIntakes[];
   programmes: DashboardProgrammeItem[];
@@ -113,6 +149,7 @@ export type DashboardDegreeCourseItem = {
   batchId: string | null;
   rowIndex: number | null;
   rowCount: number | null;
+  score?: string | null;
 };
 
 export type DashboardDegreeCourseList = {

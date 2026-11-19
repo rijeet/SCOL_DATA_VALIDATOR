@@ -11,6 +11,7 @@ import { DataEntryStorageKeyBuilder } from './DataEntryStorageKeyBuilder';
 import { DataEntryDashboardService } from './DataEntryDashboardService';
 import { DataEntryExportService } from './DataEntryExportService';
 import { DataEntryApplyFilledService } from './DataEntryApplyFilledService';
+import { DataEntryUnpublishedCourseService } from './DataEntryUnpublishedCourseService';
 
 @Module({
   imports: [CloudinaryModule, StorageModule],
@@ -25,6 +26,7 @@ import { DataEntryApplyFilledService } from './DataEntryApplyFilledService';
     DataEntryStagingService,
     DataEntryExportService,
     DataEntryApplyFilledService,
+    DataEntryUnpublishedCourseService,
   ],
   exports: [
     DataEntryCloudCatalogService,
@@ -34,6 +36,7 @@ import { DataEntryApplyFilledService } from './DataEntryApplyFilledService';
     DataEntryDashboardService,
     DataEntryExportService,
     DataEntryApplyFilledService,
+    DataEntryUnpublishedCourseService,
   ],
 })
 export class DataEntryStagingModule {}

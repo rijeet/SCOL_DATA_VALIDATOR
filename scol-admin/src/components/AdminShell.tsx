@@ -56,6 +56,12 @@ export function AdminShell({ children }: Props) {
               <LayoutDashboard className="h-4 w-4" aria-hidden />
               Dashboard
             </Link>
+            <Link
+              to="/unpublished"
+              className="text-sm font-bold text-slate-700 hover:text-slate-950"
+            >
+              Unpublished
+            </Link>
             <div className="relative" ref={menuRef}>
               <button
                 type="button"

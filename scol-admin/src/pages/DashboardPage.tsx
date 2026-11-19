@@ -9,6 +9,7 @@ import {
   ChevronRight,
   Globe,
   GraduationCap,
+  Banknote,
   Languages,
   Loader2,
   RefreshCw,
@@ -44,6 +45,17 @@ type DegreeItem = {
   courseCountByCountryId?: Record<string, number>;
 };
 
+type ToeflPreview = {
+  hasOldScore: boolean;
+  items: {
+    kind: 'overall' | 'section';
+    score: string;
+    courseCount: number;
+    suggested: string | null;
+    status: 'mapped' | 'no-match';
+  }[];
+};
+
 type DegreeCourseItem = {
   uniId: string;
   uniName: string;
@@ -53,6 +65,7 @@ type DegreeCourseItem = {
   batchId: string | null;
   rowIndex: number | null;
   rowCount: number | null;
+  score?: string | null;
 };
 
 type DegreeCourseList = {
@@ -114,12 +127,40 @@ type EntryDegreeGroup = {
   courseCount: number;
 };
 
+type EnglishScoreGroup = {
+  overall: string;
+  section: string;
+  courseCount: number;
+};
+
+type UniTuition = {
+  uniId: string;
+  uniName: string;
+  countryId: string;
+  groups: {
+    currency: string;
+    amount: string;
+    year: number;
+    month: number;
+    courseCount: number;
+  }[];
+};
+
+type UniEnglishTests = {
+  uniId: string;
+  uniName: string;
+  countryId: string;
+  tests: { id: string; name: string; groups: EnglishScoreGroup[] }[];
+};
+
 type SnapshotPayload = {
   updatedAt: string;
   totals: { countries: number; universities: number; courses: number };
   byCountry: CountrySlice[];
   degrees: DegreeItem[];
   englishTests: EnglishTestItem[];
+  englishByUni?: UniEnglishTests[];
+  tuitionByUni?: UniTuition[];
   scholarships?: ScholarshipItem[];
   intakesByUni?: UniIntakes[];
   programmes?: ProgrammeItem[];
@@ -156,11 +197,6 @@ function intakeLabel(year: number, month: number): string {
 
 function currentIntakeKey(now = new Date()): number {
   return now.getFullYear() * 12 + (now.getMonth() + 1);
-}
-
-function formatScore(value: number | null | undefined): string {
-  if (value == null || Number.isNaN(value)) return '—';
-  return Number.isInteger(value) ? String(value) : value.toFixed(1);
 }
 
 function entryPairKey(row: {
@@ -233,6 +269,10 @@ export function DashboardPage() {
   );
   const [intakeUniId, setIntakeUniId] = useState('');
   const [fromKey, setFromKey] = useState('');
+  const [intakeCourses, setIntakeCourses] = useState<DegreeCourseItem[] | null>(
+    null,
+  );
+  const [intakeCoursesLoading, setIntakeCoursesLoading] = useState(false);
   const [toMonth, setToMonth] = useState(1);
   const [toYear, setToYear] = useState(new Date().getFullYear());
   const [confirmRemap, setConfirmRemap] = useState(false);
@@ -244,7 +284,41 @@ export function DashboardPage() {
   const [toHighDegreeId, setToHighDegreeId] = useState('');
   const [confirmEntry, setConfirmEntry] = useState(false);
   const [savingEntry, setSavingEntry] = useState(false);
+  const [englishUniId, setEnglishUniId] = useState('');
+  const [englishTestId, setEnglishTestId] = useState('');
+  const [englishGroupKey, setEnglishGroupKey] = useState('');
+  const [toEngOverall, setToEngOverall] = useState('');
+  const [toEngSection, setToEngSection] = useState('');
+  const [confirmEnglish, setConfirmEnglish] = useState(false);
+  const [savingEnglish, setSavingEnglish] = useState(false);
+  const [toeflPreview, setToeflPreview] = useState<ToeflPreview | null>(null);
+  const [toeflOpen, setToeflOpen] = useState(false);
+  const [toeflEdits, setToeflEdits] = useState<Record<string, string>>({});
+  const [toeflBusy, setToeflBusy] = useState(false);
+  const [tuitionUniId, setTuitionUniId] = useState('');
+  const [tuitionKey, setTuitionKey] = useState('');
+  const [toFeeCurrency, setToFeeCurrency] = useState('');
+  const [toFeeAmount, setToFeeAmount] = useState('');
+  const [confirmTuition, setConfirmTuition] = useState(false);
+  const [savingTuition, setSavingTuition] = useState(false);
+  const [tuitionCourses, setTuitionCourses] = useState<DegreeCourseItem[] | null>(
+    null,
+  );
+  const [tuitionCoursesLoading, setTuitionCoursesLoading] = useState(false);
+  const [englishCourses, setEnglishCourses] = useState<DegreeCourseItem[] | null>(
+    null,
+  );
+  const [englishCoursesLoading, setEnglishCoursesLoading] = useState(false);
   const [programmeId, setProgrammeId] = useState<string | null>(null);
+  const [programmeCourses, setProgrammeCourses] = useState<
+    DegreeCourseItem[] | null
+  >(null);
+  const [programmeCoursesLoading, setProgrammeCoursesLoading] = useState(false);
+  const [scholarshipCourses, setScholarshipCourses] = useState<
+    DegreeCourseItem[] | null
+  >(null);
+  const [scholarshipCoursesLoading, setScholarshipCoursesLoading] =
+    useState(false);
   const [programmeName, setProgrammeName] = useState('');
   const [confirmProgramme, setConfirmProgramme] = useState(false);
   const [savingProgramme, setSavingProgramme] = useState(false);
@@ -379,7 +453,11 @@ export function DashboardPage() {
       universityKey: course.universityKey,
       rowCount: course.rowCount ?? course.rowIndex + 1,
     });
-    navigate(`/work/${course.batchId}/rows/${course.rowIndex}`);
+    window.open(
+      `/work/${course.batchId}/rows/${course.rowIndex}`,
+      '_blank',
+      'noopener',
+    );
   }
 
   const entryDegrees = useMemo(
@@ -483,6 +561,38 @@ export function DashboardPage() {
     (i) => String(i.intakeKey) === fromKey,
   );
 
+  useEffect(() => {
+    if (!selectedIntakeUni || !fromIntake) {
+      setIntakeCourses(null);
+      return;
+    }
+    let cancelled = false;
+    setIntakeCoursesLoading(true);
+    const params = new URLSearchParams({
+      uniId: selectedIntakeUni.uniId,
+      year: String(fromIntake.year),
+      month: String(fromIntake.month),
+    });
+    apiFetch<{ courses: DegreeCourseItem[] }>(
+      `/data-entry/dashboard/intakes/courses?${params}`,
+    )
+      .then((data) => {
+        if (!cancelled) setIntakeCourses(data.courses);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setIntakeCourses([]);
+          setError(e instanceof Error ? e.message : 'Failed to load intake courses');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setIntakeCoursesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedIntakeUni, fromIntake]);
+
   const programmes = useMemo(() => {
     const uniIds = selectedCountry
       ? new Set(selectedCountry.universities.map((u) => u.id))
@@ -527,6 +637,275 @@ export function DashboardPage() {
   const fromEntry = entryRows.find((r) => entryPairKey(r) === fromEntryKey);
 
   const selectedProgramme = programmes.find((p) => p.id === programmeId);
+
+  useEffect(() => {
+    if (!programmeId) {
+      setProgrammeCourses(null);
+      return;
+    }
+    let cancelled = false;
+    setProgrammeCoursesLoading(true);
+    apiFetch<{ courses: DegreeCourseItem[] }>(
+      `/data-entry/dashboard/programmes/${programmeId}/courses`,
+    )
+      .then((data) => {
+        if (!cancelled) setProgrammeCourses(data.courses);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setProgrammeCourses([]);
+          setError(
+            e instanceof Error ? e.message : 'Failed to load programme courses',
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setProgrammeCoursesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [programmeId]);
+
+  const englishUnis = useMemo(() => {
+    const rows = payload?.englishByUni ?? [];
+    return selectedCountryId
+      ? rows.filter((u) => u.countryId === selectedCountryId)
+      : rows;
+  }, [payload, selectedCountryId]);
+  const selectedEnglishUni =
+    englishUnis.find((u) => u.uniId === englishUniId) ?? englishUnis[0] ?? null;
+  const selectedEnglishTest =
+    selectedEnglishUni?.tests.find((t) => t.id === englishTestId) ??
+    selectedEnglishUni?.tests[0] ??
+    null;
+  const selectedEnglishGroup =
+    selectedEnglishTest?.groups.find(
+      (g) => `${g.overall}\0${g.section}` === englishGroupKey,
+    ) ?? null;
+
+  useEffect(() => {
+    if (!selectedEnglishUni) {
+      setEnglishUniId('');
+      setEnglishTestId('');
+      setEnglishGroupKey('');
+      return;
+    }
+    if (englishUniId !== selectedEnglishUni.uniId) {
+      setEnglishUniId(selectedEnglishUni.uniId);
+      setEnglishTestId('');
+      setEnglishGroupKey('');
+    }
+  }, [selectedEnglishUni, englishUniId]);
+
+  useEffect(() => {
+    if (!selectedEnglishUni || !selectedEnglishTest || !selectedEnglishGroup) {
+      setEnglishCourses(null);
+      return;
+    }
+    let cancelled = false;
+    setEnglishCoursesLoading(true);
+    const params = new URLSearchParams({
+      uniId: selectedEnglishUni.uniId,
+      overall: selectedEnglishGroup.overall,
+      section: selectedEnglishGroup.section,
+    });
+    apiFetch<{ courses: DegreeCourseItem[] }>(
+      `/data-entry/dashboard/english-tests/${selectedEnglishTest.id}/courses?${params}`,
+    )
+      .then((data) => {
+        if (!cancelled) setEnglishCourses(data.courses);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setEnglishCourses([]);
+          setError(
+            e instanceof Error ? e.message : 'Failed to load English test courses',
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setEnglishCoursesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedEnglishUni, selectedEnglishTest, selectedEnglishGroup]);
+
+  useEffect(() => {
+    if (!payload) return;
+    let cancelled = false;
+    apiFetch<ToeflPreview>('/data-entry/dashboard/english-tests/toefl-preview')
+      .then((data) => {
+        if (cancelled) return;
+        setToeflPreview(data);
+        setToeflEdits(
+          Object.fromEntries(
+            data.items.map((item) => [
+              `${item.kind}\0${item.score}`,
+              item.suggested ?? '',
+            ]),
+          ),
+        );
+        if (!data.hasOldScore) setToeflOpen(false);
+      })
+      .catch(() => {
+        if (!cancelled) setToeflPreview({ hasOldScore: false, items: [] });
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [payload]);
+
+  const tuitionUnis = useMemo(() => {
+    const rows = payload?.tuitionByUni ?? [];
+    return selectedCountryId
+      ? rows.filter((u) => u.countryId === selectedCountryId)
+      : rows;
+  }, [payload, selectedCountryId]);
+  const selectedTuitionUni =
+    tuitionUnis.find((u) => u.uniId === tuitionUniId) ?? tuitionUnis[0] ?? null;
+  const selectedTuition =
+    selectedTuitionUni?.groups.find(
+      (g) => `${g.currency}\0${g.amount}\0${g.year}\0${g.month}` === tuitionKey,
+    ) ?? null;
+
+  useEffect(() => {
+    if (!selectedTuitionUni || !selectedTuition) {
+      setTuitionCourses(null);
+      return;
+    }
+    let cancelled = false;
+    setTuitionCoursesLoading(true);
+    const params = new URLSearchParams({
+      uniId: selectedTuitionUni.uniId,
+      currency: selectedTuition.currency,
+      amount: selectedTuition.amount,
+      year: String(selectedTuition.year),
+      month: String(selectedTuition.month),
+    });
+    apiFetch<{ courses: DegreeCourseItem[] }>(
+      `/data-entry/dashboard/tuition/courses?${params}`,
+    )
+      .then((data) => {
+        if (!cancelled) setTuitionCourses(data.courses);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setTuitionCourses([]);
+          setError(e instanceof Error ? e.message : 'Failed to load tuition courses');
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setTuitionCoursesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [selectedTuitionUni, selectedTuition]);
+
+  async function remapTuition() {
+    if (!selectedTuitionUni || !selectedTuition) return;
+    setSavingTuition(true);
+    setError(null);
+    try {
+      await apiFetch('/data-entry/dashboard/tuition/remap', {
+        method: 'POST',
+        body: JSON.stringify({
+          uniId: selectedTuitionUni.uniId,
+          fromCurrency: selectedTuition.currency,
+          fromAmount: selectedTuition.amount,
+          year: selectedTuition.year,
+          month: selectedTuition.month,
+          toCurrency: toFeeCurrency,
+          toAmount: toFeeAmount,
+        }),
+      });
+      const res = await apiFetch<SnapshotResponse>(
+        '/data-entry/dashboard/refresh',
+        { method: 'POST', body: JSON.stringify({}) },
+      );
+      setPayload(res.payload);
+      setConfirmTuition(false);
+      setTuitionKey('');
+      setRemapNotice('Updated tuition on the catalog and course rows.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'Tuition update failed');
+    } finally {
+      setSavingTuition(false);
+    }
+  }
+
+  async function remapEnglish() {
+    if (!selectedEnglishUni || !selectedEnglishTest || !selectedEnglishGroup) {
+      return;
+    }
+    setSavingEnglish(true);
+    setError(null);
+    try {
+      await apiFetch('/data-entry/dashboard/english-tests/remap', {
+        method: 'POST',
+        body: JSON.stringify({
+          uniId: selectedEnglishUni.uniId,
+          testId: selectedEnglishTest.id,
+          fromOverall: selectedEnglishGroup.overall,
+          fromSection: selectedEnglishGroup.section,
+          toOverall: toEngOverall,
+          toSection: toEngSection,
+        }),
+      });
+      const res = await apiFetch<SnapshotResponse>(
+        '/data-entry/dashboard/refresh',
+        { method: 'POST', body: JSON.stringify({}) },
+      );
+      setPayload(res.payload);
+      setConfirmEnglish(false);
+      setEnglishGroupKey('');
+      setRemapNotice('Updated English scores on the catalog and course rows.');
+    } catch (e) {
+      setError(e instanceof Error ? e.message : 'English score update failed');
+    } finally {
+      setSavingEnglish(false);
+    }
+  }
+
+  useEffect(() => {
+    if (!fromScholarship || !selectedScholarshipUni) {
+      setScholarshipCourses(null);
+      return;
+    }
+    let cancelled = false;
+    setScholarshipCoursesLoading(true);
+    const params = new URLSearchParams({
+      uniId: selectedScholarshipUni.uniId,
+      degreeId: fromScholarship.degreeId,
+      name: fromScholarship.name ?? '',
+      amount: fromScholarship.amount ?? '',
+      amountType: fromScholarship.amountType ?? '',
+    });
+    apiFetch<{ courses: DegreeCourseItem[] }>(
+      `/data-entry/dashboard/scholarships/courses?${params}`,
+    )
+      .then((data) => {
+        if (!cancelled) setScholarshipCourses(data.courses);
+      })
+      .catch((e) => {
+        if (!cancelled) {
+          setScholarshipCourses([]);
+          setError(
+            e instanceof Error
+              ? e.message
+              : 'Failed to load scholarship courses',
+          );
+        }
+      })
+      .finally(() => {
+        if (!cancelled) setScholarshipCoursesLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [fromScholarship, selectedScholarshipUni]);
 
   useEffect(() => {
     if (!selectedEntryUni) {
@@ -817,8 +1196,7 @@ export function DashboardPage() {
               )}
             </section>
 
-            <section className="mb-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+            <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h2 className="mb-3 inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-600">
                   <GraduationCap className="h-4 w-4" aria-hidden />
                   {selectedDegree
@@ -926,9 +1304,9 @@ export function DashboardPage() {
                     )}
                   </ul>
                 )}
-              </div>
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 className="mb-3 inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-600">
+            </section>
+            <section className="mb-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+                <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-600">
                   <GraduationCap className="h-4 w-4" aria-hidden />
                   Min / high degree
                 </h2>
@@ -987,14 +1365,14 @@ export function DashboardPage() {
                   )}
                 </ul>
                 {fromEntry && selectedEntryUni && (
-                  <div className="relative mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 pr-9">
+                  <div className="relative mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 pr-12">
                     <button
                       type="button"
                       onClick={() => setFromEntryKey('')}
-                      className="absolute right-2 top-2 rounded p-0.5 text-rose-600 hover:bg-rose-50 hover:text-rose-800"
+                      className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-300 bg-white text-rose-700 shadow-sm hover:bg-rose-50"
                       aria-label="Close min/high editor"
                     >
-                      <X className="h-4 w-4" />
+                      <X className="h-5 w-5" strokeWidth={2.5} />
                     </button>
                     <p className="text-xs font-medium text-slate-600">
                       Change this min/high pair for matching courses at{' '}
@@ -1049,33 +1427,9 @@ export function DashboardPage() {
                     </div>
                   </div>
                 )}
-              </div>
             </section>
 
-            <section className="mb-6 grid gap-4 md:grid-cols-2">
-              <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
-                <h2 className="mb-3 inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-600">
-                  <Languages className="h-4 w-4" aria-hidden />
-                  English tests
-                </h2>
-                <ul className="max-h-64 overflow-y-auto text-sm">
-                  {(payload.englishTests ?? []).map((t) => (
-                    <li
-                      key={t.id}
-                      className="flex items-center justify-between gap-3 border-b border-slate-50 py-1.5 font-bold"
-                    >
-                      <span className="text-slate-800">{t.name}</span>
-                      <span className="shrink-0 text-xs font-bold text-slate-500">
-                        Min {formatScore(t.minScore)} · Max{' '}
-                        {formatScore(t.maxScore)}
-                      </span>
-                    </li>
-                  ))}
-                  {(payload.englishTests ?? []).length === 0 && (
-                    <li className="font-bold text-slate-500">None</li>
-                  )}
-                </ul>
-              </div>
+            <section className="mb-6">
               <div className="rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
                 <h2 className="mb-3 inline-flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-600">
                   <BookMarked className="h-4 w-4" aria-hidden />
@@ -1109,17 +1463,57 @@ export function DashboardPage() {
                   )}
                 </ul>
                 {selectedProgramme && (
-                  <div className="relative mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 pr-9">
+                  <ul className="mt-3 max-h-48 overflow-y-auto text-sm">
+                    {programmeCoursesLoading && (
+                      <li className="font-bold text-slate-500">Loading courses…</li>
+                    )}
+                    {(programmeCourses ?? []).map((c) => {
+                      const editable = c.batchId != null && c.rowIndex != null;
+                      return (
+                        <li key={`${c.uniId}:${c.courseName}:${c.rowIndex}`}>
+                          <button
+                            type="button"
+                            disabled={!editable}
+                            onClick={() => openCourseRow(c)}
+                            className={`flex w-full items-center justify-between gap-3 border-b border-slate-50 py-1.5 text-left font-bold ${
+                              editable
+                                ? 'text-slate-800 hover:text-emerald-800'
+                                : 'cursor-not-allowed text-slate-400'
+                            }`}
+                          >
+                            <span className="min-w-0 truncate">
+                              {c.courseName}
+                              <span className="block truncate text-xs text-slate-500">
+                                {c.uniName}
+                              </span>
+                            </span>
+                            {editable ? (
+                              <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+                            ) : (
+                              <span className="shrink-0 text-xs">No row</span>
+                            )}
+                          </button>
+                        </li>
+                      );
+                    })}
+                    {!programmeCoursesLoading &&
+                      (programmeCourses ?? []).length === 0 && (
+                        <li className="font-bold text-slate-500">No courses</li>
+                      )}
+                  </ul>
+                )}
+                {selectedProgramme && (
+                  <div className="relative mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 pr-12">
                     <button
                       type="button"
                       onClick={() => {
                         setProgrammeId(null);
                         setProgrammeName('');
                       }}
-                      className="absolute right-2 top-2 rounded p-0.5 text-rose-600 hover:bg-rose-50 hover:text-rose-800"
+                      className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-300 bg-white text-rose-700 shadow-sm hover:bg-rose-50"
                       aria-label="Close programme editor"
                     >
-                      <X className="h-4 w-4" />
+                      <X className="h-5 w-5" strokeWidth={2.5} />
                     </button>
                     <label className="text-sm font-bold text-slate-700">
                       New name
@@ -1175,92 +1569,103 @@ export function DashboardPage() {
                 </select>
               </label>
               <div className="max-h-72 overflow-auto">
-                <table className="w-full min-w-[36rem] text-left text-sm">
-                  <thead className="sticky top-0 bg-white text-xs font-bold uppercase tracking-wide text-slate-500">
-                    <tr>
-                      <th className="py-2 pr-3">Scholarship</th>
-                      <th className="py-2 pr-3">Degree</th>
-                      <th className="py-2 pr-3">Amount</th>
-                      <th className="py-2 pr-3">Type</th>
-                      <th className="py-2">Courses</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {scholarshipRows.map((s) => {
-                      const key = scholarshipRowKey(s);
-                      const active = key === fromScholarshipKey;
-                      return (
-                        <tr key={key} className="border-t border-slate-100">
-                          <td colSpan={5} className="p-0">
-                            <button
-                              type="button"
-                              onClick={() => {
-                                setFromScholarshipKey(key);
-                                setToSchName(s.name ?? '');
-                                setToSchAmount(s.amount ?? '');
-                                setToSchType(
-                                  normalizeCommissionType(s.amountType ?? '') ??
-                                    '',
-                                );
-                              }}
-                              className={`flex w-full items-center gap-3 py-2 pr-3 text-left font-bold ${
-                                active ? 'text-emerald-800' : 'text-slate-800'
-                              }`}
-                            >
-                              <span className="min-w-0 flex-1 pr-3">
-                                {s.name?.trim() || 'No scholarship'}
-                              </span>
-                              <span className="w-24 shrink-0 text-slate-700">
-                                {s.degreeName}
-                              </span>
-                              <span className="w-24 shrink-0 text-slate-800">
-                                {s.name
-                                  ? formatAmount(s.amount, null)
-                                  : '—'}
-                              </span>
-                              <span className="w-28 shrink-0 text-slate-700">
-                                {s.name
-                                  ? AMOUNT_TYPES.find(
-                                      (t) =>
-                                        t.typeCode ===
-                                        normalizeCommissionType(
-                                          s.amountType ?? '',
-                                        ),
-                                    )?.typeName ??
-                                    s.amountType?.trim() ??
-                                    '—'
-                                  : '—'}
-                              </span>
-                              <span className="w-16 shrink-0 text-slate-500">
-                                {s.courseCount}
-                              </span>
-                            </button>
-                          </td>
-                        </tr>
-                      );
-                    })}
-                    {scholarshipRows.length === 0 && (
-                      <tr>
-                        <td
-                          colSpan={5}
-                          className="py-3 font-bold text-slate-500"
-                        >
-                          None
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+                <div className="sticky top-0 grid grid-cols-[minmax(0,1fr)_5rem_6.5rem_7rem_4.5rem] bg-white py-2 text-xs font-bold uppercase tracking-wide text-slate-500">
+                  <span>Scholarship</span>
+                  <span>Degree</span>
+                  <span className="text-right">Amount</span>
+                  <span className="pl-3">Type</span>
+                  <span className="text-right">Courses</span>
+                </div>
+                {scholarshipRows.map((s) => {
+                  const key = scholarshipRowKey(s);
+                  const active = key === fromScholarshipKey;
+                  const typeLabel = s.name
+                    ? AMOUNT_TYPES.find(
+                        (t) =>
+                          t.typeCode ===
+                          normalizeCommissionType(s.amountType ?? ''),
+                      )?.typeName ??
+                      s.amountType?.trim() ??
+                      '—'
+                    : '—';
+                  return (
+                    <button
+                      key={key}
+                      type="button"
+                      onClick={() => {
+                        setFromScholarshipKey(key);
+                        setToSchName(s.name ?? '');
+                        setToSchAmount(s.amount ?? '');
+                        setToSchType(
+                          normalizeCommissionType(s.amountType ?? '') ?? '',
+                        );
+                      }}
+                      className={`grid w-full grid-cols-[minmax(0,1fr)_5rem_6.5rem_7rem_4.5rem] items-center border-t border-slate-100 py-2 text-left text-sm font-bold ${
+                        active ? 'text-emerald-800' : 'text-slate-800'
+                      }`}
+                    >
+                      <span className="min-w-0 truncate pr-3">
+                        {s.name?.trim() || 'No scholarship'}
+                      </span>
+                      <span className="text-slate-700">{s.degreeName}</span>
+                      <span className="text-right text-slate-800">
+                        {s.name ? formatAmount(s.amount, null) : '—'}
+                      </span>
+                      <span className="pl-3 text-slate-700">{typeLabel}</span>
+                      <span className="text-right text-slate-500">
+                        {s.courseCount}
+                      </span>
+                    </button>
+                  );
+                })}
+                {scholarshipRows.length === 0 && (
+                  <p className="py-3 text-sm font-bold text-slate-500">None</p>
+                )}
               </div>
               {fromScholarship && selectedScholarshipUni && (
-                <div className="relative mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 pr-9">
+                <ul className="mt-3 max-h-48 overflow-y-auto text-sm">
+                  {scholarshipCoursesLoading && (
+                    <li className="font-bold text-slate-500">Loading courses…</li>
+                  )}
+                  {(scholarshipCourses ?? []).map((c) => {
+                    const editable = c.batchId != null && c.rowIndex != null;
+                    return (
+                      <li key={`${c.courseName}:${c.rowIndex}`}>
+                        <button
+                          type="button"
+                          disabled={!editable}
+                          onClick={() => openCourseRow(c)}
+                          className={`flex w-full items-center justify-between gap-3 border-b border-slate-50 py-1.5 text-left font-bold ${
+                            editable
+                              ? 'text-slate-800 hover:text-emerald-800'
+                              : 'cursor-not-allowed text-slate-400'
+                          }`}
+                        >
+                          <span className="min-w-0 truncate">{c.courseName}</span>
+                          {editable ? (
+                            <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+                          ) : (
+                            <span className="shrink-0 text-xs">No row</span>
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                  {!scholarshipCoursesLoading &&
+                    (scholarshipCourses ?? []).length === 0 && (
+                      <li className="font-bold text-slate-500">No courses</li>
+                    )}
+                </ul>
+              )}
+              {fromScholarship && selectedScholarshipUni && (
+                <div className="relative mt-3 rounded-lg border border-slate-200 bg-slate-50 p-3 pr-12">
                   <button
                     type="button"
                     onClick={() => setFromScholarshipKey('')}
-                    className="absolute right-2 top-2 rounded p-0.5 text-rose-600 hover:bg-rose-50 hover:text-rose-800"
+                    className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-300 bg-white text-rose-700 shadow-sm hover:bg-rose-50"
                     aria-label="Close scholarship editor"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-5 w-5" strokeWidth={2.5} />
                   </button>
                   <p className="text-xs font-medium text-slate-600">
                     {fromScholarship.name
@@ -1413,15 +1818,16 @@ export function DashboardPage() {
                           setToYear(i.year);
                         }}
                         className={`rounded-full border px-3 py-1.5 text-xs font-bold ${
-                          selected
-                            ? 'border-slate-900 bg-slate-900 text-white'
-                            : past
-                              ? 'border-amber-300 bg-amber-50 text-amber-900'
-                              : 'border-slate-200 bg-slate-50 text-slate-800'
+                          selected && past
+                            ? 'border-red-700 bg-red-700 text-white'
+                            : selected
+                              ? 'border-slate-900 bg-slate-900 text-white'
+                              : past
+                                ? 'border-red-300 bg-red-50 text-red-700'
+                                : 'border-slate-200 bg-slate-50 text-slate-800'
                         }`}
                       >
                         {intakeLabel(i.year, i.month)} · {i.courseCount}
-                        {past ? ' · past' : ''}
                       </button>
                     );
                   })}
@@ -1432,15 +1838,56 @@ export function DashboardPage() {
                 </p>
               )}
 
+              {fromIntake && (
+                <ul className="mt-3 max-h-64 overflow-y-auto text-sm">
+                  {intakeCoursesLoading && (
+                    <li className="font-bold text-slate-500">Loading courses…</li>
+                  )}
+                  {(intakeCourses ?? []).map((c) => {
+                    const editable = c.batchId != null && c.rowIndex != null;
+                    return (
+                      <li key={`${c.uniId}:${c.courseName}:${c.rowIndex}`}>
+                        <button
+                          type="button"
+                          disabled={!editable}
+                          onClick={() => openCourseRow(c)}
+                          className={`flex w-full items-center justify-between gap-3 border-b border-slate-50 py-1.5 text-left font-bold ${
+                            editable
+                              ? 'text-slate-800 hover:text-emerald-800'
+                              : 'cursor-not-allowed text-slate-400'
+                          }`}
+                        >
+                          <span className="min-w-0">
+                            <span className="block truncate">{c.courseName}</span>
+                            <span className="block truncate text-xs text-slate-500">
+                              {c.uniName}
+                              {c.programmeName ? ` · ${c.programmeName}` : ''}
+                            </span>
+                          </span>
+                          {editable ? (
+                            <ChevronRight className="h-4 w-4 shrink-0" aria-hidden />
+                          ) : (
+                            <span className="shrink-0 text-xs">No row</span>
+                          )}
+                        </button>
+                      </li>
+                    );
+                  })}
+                  {!intakeCoursesLoading && (intakeCourses ?? []).length === 0 && (
+                    <li className="font-bold text-slate-500">No courses</li>
+                  )}
+                </ul>
+              )}
+
               {fromIntake && selectedIntakeUni && (
-                <div className="relative mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 pr-9">
+                <div className="relative mt-4 rounded-lg border border-slate-200 bg-slate-50 p-3 pr-12">
                   <button
                     type="button"
                     onClick={() => setFromKey('')}
-                    className="absolute right-2 top-2 rounded p-0.5 text-rose-600 hover:bg-rose-50 hover:text-rose-800"
+                    className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-300 bg-white text-rose-700 shadow-sm hover:bg-rose-50"
                     aria-label="Close intake editor"
                   >
-                    <X className="h-4 w-4" />
+                    <X className="h-5 w-5" strokeWidth={2.5} />
                   </button>
                   <p className="text-sm font-bold text-slate-800">
                     Batch update past intakes
@@ -1493,6 +1940,403 @@ export function DashboardPage() {
                 </div>
               )}
             </section>
+
+            <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-600">
+                <Languages className="h-4 w-4" aria-hidden />
+                English tests
+              </h2>
+              <button
+                type="button"
+                disabled={!toeflPreview?.hasOldScore}
+                onClick={() => setToeflOpen(true)}
+                className={`mb-3 text-sm font-bold ${
+                  toeflPreview?.hasOldScore
+                    ? 'text-emerald-800 hover:underline'
+                    : 'cursor-not-allowed text-slate-400'
+                }`}
+              >
+                TOEFL scale
+              </button>
+              {toeflOpen && toeflPreview?.hasOldScore && (
+                <div className="mb-4 rounded-lg border border-slate-200 bg-slate-50 p-3">
+                  <table className="w-full border-collapse text-left text-sm">
+                    <thead>
+                      <tr className="text-xs font-bold uppercase text-slate-500">
+                        <th className="border border-red-500 px-2 py-1">Stored</th>
+                        <th className="border border-red-500 px-2 py-1">New 1–6</th>
+                        <th className="border border-red-500 px-2 py-1">Courses</th>
+                        <th className="border border-red-500 px-2 py-1">Status</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {toeflPreview.items.map((item) => {
+                        const key = `${item.kind}\0${item.score}`;
+                        const rowColor =
+                          item.kind === 'overall'
+                            ? 'bg-amber-100'
+                            : 'bg-green-100';
+                        return (
+                          <tr key={key} className={rowColor}>
+                            <td className="border border-red-500 px-2 py-1.5 font-bold">
+                              {item.kind} {item.score}
+                            </td>
+                            <td className="border border-red-500 px-2">
+                              <input
+                                className="w-20 rounded border border-slate-300 bg-white px-2 py-1"
+                                value={toeflEdits[key] ?? ''}
+                                onChange={(e) =>
+                                  setToeflEdits((current) => ({
+                                    ...current,
+                                    [key]: e.target.value,
+                                  }))
+                                }
+                              />
+                            </td>
+                            <td className="border border-red-500 px-2">{item.courseCount}</td>
+                            <td className="border border-red-500 px-2 text-xs font-bold text-slate-500">
+                              {item.status === 'no-match' ? 'No match' : 'Mapped'}
+                            </td>
+                          </tr>
+                        );
+                      })}
+                    </tbody>
+                  </table>
+                  <button
+                    type="button"
+                    disabled={toeflBusy}
+                    className="mt-3 rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white disabled:opacity-40"
+                    onClick={() => {
+                      const missing = toeflPreview.items.some(
+                        (item) =>
+                          !(toeflEdits[`${item.kind}\0${item.score}`] ?? '').trim(),
+                      );
+                      if (missing) {
+                        setError('Enter a 1–6 score for every TOEFL row.');
+                        return;
+                      }
+                      setToeflBusy(true);
+                      setError(null);
+                      void apiFetch(
+                        '/data-entry/dashboard/english-tests/toefl-scale',
+                        {
+                          method: 'POST',
+                          body: JSON.stringify({
+                            pairs: toeflPreview.items.map((item) => ({
+                              kind: item.kind,
+                              from: item.score,
+                              to: toeflEdits[`${item.kind}\0${item.score}`],
+                            })),
+                          }),
+                        },
+                      )
+                        .then(async () => {
+                          const res = await apiFetch<SnapshotResponse>(
+                            '/data-entry/dashboard/refresh',
+                            { method: 'POST', body: JSON.stringify({}) },
+                          );
+                          setPayload(res.payload);
+                          setToeflOpen(false);
+                          setRemapNotice('Updated TOEFL scores to the 1–6 scale.');
+                        })
+                        .catch((e) => {
+                          setError(
+                            e instanceof Error ? e.message : 'TOEFL update failed',
+                          );
+                        })
+                        .finally(() => setToeflBusy(false));
+                    }}
+                  >
+                    Apply scale
+                  </button>
+                </div>
+              )}
+              <label className="block text-sm font-bold text-slate-700">
+                University
+                <select
+                  className="mt-1 block min-w-64 rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-medium"
+                  value={selectedEnglishUni?.uniId ?? ''}
+                  onChange={(e) => {
+                    setEnglishUniId(e.target.value);
+                    setEnglishTestId('');
+                    setEnglishGroupKey('');
+                  }}
+                >
+                  {englishUnis.map((u) => (
+                    <option key={u.uniId} value={u.uniId}>
+                      {u.uniName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selectedEnglishUni ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectedEnglishUni.tests.map((t) => {
+                    const active = selectedEnglishTest?.id === t.id;
+                    return (
+                      <button
+                        key={t.id}
+                        type="button"
+                        onClick={() => {
+                          setEnglishTestId(t.id);
+                          setEnglishGroupKey('');
+                        }}
+                        className={`rounded-full border px-3 py-1 text-sm font-bold ${
+                          active
+                            ? 'border-slate-900 bg-slate-900 text-white'
+                            : 'border-slate-200 bg-slate-50 text-slate-800'
+                        }`}
+                      >
+                        {t.name}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm font-bold text-slate-500">
+                  No English scores in catalog.
+                </p>
+              )}
+              {selectedEnglishTest && (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectedEnglishTest.groups.map((g) => {
+                    const key = `${g.overall}\0${g.section}`;
+                    const active = englishGroupKey === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => {
+                          setEnglishGroupKey(key);
+                          setToEngOverall(g.overall);
+                          setToEngSection(g.section);
+                        }}
+                        className={`rounded-full border px-3 py-1 text-sm font-bold ${
+                          active
+                            ? 'border-slate-900 bg-slate-900 text-white'
+                            : 'border-slate-200 bg-slate-50 text-slate-800'
+                        }`}
+                      >
+                        {g.overall}/{g.section} · {g.courseCount}
+                      </button>
+                    );
+                  })}
+                </div>
+              )}
+              {selectedEnglishGroup && (
+                <ul className="mt-3 max-h-64 overflow-y-auto text-sm">
+                  {englishCoursesLoading && (
+                    <li className="font-bold text-slate-500">Loading courses…</li>
+                  )}
+                  {(englishCourses ?? []).map((c) => {
+                    const editable = c.batchId != null && c.rowIndex != null;
+                    return (
+                      <li key={`${c.uniId}:${c.courseName}:${c.rowIndex}`}>
+                        <button
+                          type="button"
+                          disabled={!editable}
+                          onClick={() => openCourseRow(c)}
+                          className={`flex w-full items-center justify-between gap-3 border-b border-slate-50 py-1.5 text-left font-bold ${
+                            editable
+                              ? 'text-slate-800 hover:text-emerald-800'
+                              : 'cursor-not-allowed text-slate-400'
+                          }`}
+                        >
+                          <span className="min-w-0 truncate">
+                            {c.courseName}
+                            <span className="block truncate text-xs text-slate-500">
+                              {c.uniName}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-xs font-bold">
+                            {c.score || '—'}
+                            {!editable && (
+                              <span className="ml-2 font-bold">No row</span>
+                            )}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {selectedEnglishGroup && selectedEnglishUni && selectedEnglishTest && (
+                <div className="relative mt-3 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 pr-12">
+                  <button
+                    type="button"
+                    className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-300 bg-white text-rose-700 shadow-sm hover:bg-rose-50"
+                    aria-label="Close English score editor"
+                    onClick={() => setEnglishGroupKey('')}
+                  >
+                    <X className="h-5 w-5" strokeWidth={2.5} />
+                  </button>
+                  <label className="text-sm font-bold text-slate-700">
+                    Overall
+                    <input
+                      className="mt-1 block w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-medium"
+                      value={toEngOverall}
+                      onChange={(e) => setToEngOverall(e.target.value)}
+                    />
+                  </label>
+                  <label className="text-sm font-bold text-slate-700">
+                    Section min
+                    <input
+                      className="mt-1 block w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-medium"
+                      value={toEngSection}
+                      onChange={(e) => setToEngSection(e.target.value)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={
+                      toEngOverall.trim() === selectedEnglishGroup.overall &&
+                      toEngSection.trim() === selectedEnglishGroup.section
+                    }
+                    onClick={() => {
+                      setError(null);
+                      setConfirmEnglish(true);
+                    }}
+                    className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white disabled:opacity-40"
+                  >
+                    Set score
+                  </button>
+                </div>
+              )}
+            </section>
+
+            <section className="mt-6 rounded-xl border border-slate-200 bg-white p-4 shadow-sm">
+              <h2 className="mb-3 flex items-center gap-2 text-sm font-bold uppercase tracking-wide text-slate-600">
+                <Banknote className="h-4 w-4" aria-hidden />
+                Tuition fees
+              </h2>
+              <label className="block text-sm font-bold text-slate-700">
+                University
+                <select
+                  className="mt-1 block min-w-64 rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-medium"
+                  value={selectedTuitionUni?.uniId ?? ''}
+                  onChange={(e) => {
+                    setTuitionUniId(e.target.value);
+                    setTuitionKey('');
+                  }}
+                >
+                  {tuitionUnis.map((u) => (
+                    <option key={u.uniId} value={u.uniId}>
+                      {u.uniName}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              {selectedTuitionUni ? (
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {selectedTuitionUni.groups.map((g) => {
+                    const key = `${g.currency}\0${g.amount}\0${g.year}\0${g.month}`;
+                    const active = tuitionKey === key;
+                    return (
+                      <button
+                        key={key}
+                        type="button"
+                        onClick={() => {
+                          setTuitionKey(key);
+                          setToFeeCurrency(g.currency);
+                          setToFeeAmount(g.amount);
+                        }}
+                        className={`rounded-full border px-3 py-1 text-sm font-bold ${
+                          active
+                            ? 'border-slate-900 bg-slate-900 text-white'
+                            : 'border-slate-200 bg-slate-50 text-slate-800'
+                        }`}
+                      >
+                        {g.currency} {g.amount} · {intakeLabel(g.year, g.month)} ·{' '}
+                        {g.courseCount}
+                      </button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="mt-3 text-sm font-bold text-slate-500">
+                  No tuition fees in catalog.
+                </p>
+              )}
+              {selectedTuition && (
+                <ul className="mt-3 max-h-64 overflow-y-auto text-sm">
+                  {tuitionCoursesLoading && (
+                    <li className="font-bold text-slate-500">Loading courses…</li>
+                  )}
+                  {(tuitionCourses ?? []).map((c) => {
+                    const editable = c.batchId != null && c.rowIndex != null;
+                    return (
+                      <li key={`${c.uniId}:${c.courseName}:${c.rowIndex}`}>
+                        <button
+                          type="button"
+                          disabled={!editable}
+                          onClick={() => openCourseRow(c)}
+                          className={`flex w-full items-center justify-between gap-3 border-b border-slate-50 py-1.5 text-left font-bold ${
+                            editable
+                              ? 'text-slate-800 hover:text-emerald-800'
+                              : 'cursor-not-allowed text-slate-400'
+                          }`}
+                        >
+                          <span className="min-w-0 truncate">
+                            {c.courseName}
+                            <span className="block truncate text-xs text-slate-500">
+                              {c.uniName}
+                            </span>
+                          </span>
+                          <span className="shrink-0 text-xs font-bold">
+                            {c.score || '—'}
+                            {!editable && (
+                              <span className="ml-2 font-bold">No row</span>
+                            )}
+                          </span>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {selectedTuition && selectedTuitionUni && (
+                <div className="relative mt-3 flex flex-wrap items-end gap-3 rounded-lg border border-slate-200 bg-slate-50 p-3 pr-12">
+                  <button
+                    type="button"
+                    className="absolute right-2 top-2 inline-flex h-8 w-8 items-center justify-center rounded-full border border-rose-300 bg-white text-rose-700 shadow-sm hover:bg-rose-50"
+                    aria-label="Close tuition editor"
+                    onClick={() => setTuitionKey('')}
+                  >
+                    <X className="h-5 w-5" strokeWidth={2.5} />
+                  </button>
+                  <label className="text-sm font-bold text-slate-700">
+                    Currency
+                    <input
+                      className="mt-1 block w-24 rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-medium"
+                      value={toFeeCurrency}
+                      onChange={(e) => setToFeeCurrency(e.target.value)}
+                    />
+                  </label>
+                  <label className="text-sm font-bold text-slate-700">
+                    Amount
+                    <input
+                      className="mt-1 block w-32 rounded-lg border border-slate-300 px-2 py-1.5 text-sm font-medium"
+                      value={toFeeAmount}
+                      onChange={(e) => setToFeeAmount(e.target.value)}
+                    />
+                  </label>
+                  <button
+                    type="button"
+                    disabled={
+                      toFeeCurrency.trim().toUpperCase() === selectedTuition.currency &&
+                      toFeeAmount.trim() === selectedTuition.amount
+                    }
+                    onClick={() => {
+                      setError(null);
+                      setConfirmTuition(true);
+                    }}
+                    className="rounded-lg bg-emerald-700 px-3 py-2 text-sm font-bold text-white disabled:opacity-40"
+                  >
+                    Set tuition
+                  </button>
+                </div>
+              )}
+            </section>
           </>
         )}
 
@@ -1515,6 +2359,42 @@ export function DashboardPage() {
           This rebuilds country, university, course, degree, programme,
           English-test, scholarship, and intake counts from the catalog. It does
           not change published data.
+        </ConfirmDialog>
+
+        <ConfirmDialog
+          open={confirmTuition}
+          title="Change this tuition fee?"
+          confirmLabel="Set tuition"
+          busyLabel="Updating…"
+          tone="primary"
+          busy={savingTuition}
+          error={error}
+          onCancel={() => {
+            if (!savingTuition) setConfirmTuition(false);
+          }}
+          onConfirm={() => void remapTuition()}
+        >
+          {selectedTuition && selectedTuitionUni
+            ? `Change ${selectedTuition.currency} ${selectedTuition.amount} for ${intakeLabel(selectedTuition.year, selectedTuition.month)} to ${toFeeCurrency} ${toFeeAmount} at ${selectedTuitionUni.uniName}. Updates the published catalog and the course row editor.`
+            : null}
+        </ConfirmDialog>
+
+        <ConfirmDialog
+          open={confirmEnglish}
+          title="Change this English score?"
+          confirmLabel="Set score"
+          busyLabel="Updating…"
+          tone="primary"
+          busy={savingEnglish}
+          error={error}
+          onCancel={() => {
+            if (!savingEnglish) setConfirmEnglish(false);
+          }}
+          onConfirm={() => void remapEnglish()}
+        >
+          {selectedEnglishGroup && selectedEnglishUni && selectedEnglishTest
+            ? `Change ${selectedEnglishTest.name} ${selectedEnglishGroup.overall}/${selectedEnglishGroup.section} to ${toEngOverall}/${toEngSection} for every matching course at ${selectedEnglishUni.uniName}. Updates the published catalog and the course row editor.`
+            : null}
         </ConfirmDialog>
 
         <ConfirmDialog

@@ -10,6 +10,7 @@ import { DestinationsPage } from './pages/DestinationsPage';
 import { CountryPage } from './pages/CountryPage';
 import { ImportCsvPage } from './pages/ImportCsvPage';
 import { DashboardPage } from './pages/DashboardPage';
+import { UnpublishedCoursesPage } from './pages/UnpublishedCoursesPage';
 
 function RequireAuth({ children }: { children: ReactNode }) {
   const location = useLocation();
@@ -59,6 +60,14 @@ export default function App() {
         element={
           <RequireAuth>
             <DashboardPage />
+          </RequireAuth>
+        }
+      />
+      <Route
+        path="/unpublished"
+        element={
+          <RequireAuth>
+            <UnpublishedCoursesPage />
           </RequireAuth>
         }
       />

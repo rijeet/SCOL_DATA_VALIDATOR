@@ -32,14 +32,28 @@ import { DataEntryUploadService } from '@bll/services/data-entry/staging/DataEnt
 import { DataEntryDashboardService } from '@bll/services/data-entry/staging/DataEntryDashboardService';
 import { DataEntryExportService } from '@bll/services/data-entry/staging/DataEntryExportService';
 import { DataEntryApplyFilledService } from '@bll/services/data-entry/staging/DataEntryApplyFilledService';
+import { DataEntryUnpublishedCourseService } from '@bll/services/data-entry/staging/DataEntryUnpublishedCourseService';
+import {
+  RemapUnpublishedEnglishScoresRequestDto,
+  RemapUnpublishedTuitionRequestDto,
+  RemapUnpublishedEntryDegreesRequestDto,
+  RemapUnpublishedIntakesRequestDto,
+  RemapUnpublishedScholarshipsRequestDto,
+  RenameUnpublishedProgrammeRequestDto,
+} from '@shared/dtos/data-entry/RemapUnpublishedCourseRequestDto';
 import { GenerateApplyFilledUploadUrlRequestDto } from '@shared/dtos/data-entry/GenerateApplyFilledUploadUrlRequestDto';
 import { CreateDataEntryBatchRequestDto } from '@shared/dtos/data-entry/CreateDataEntryBatchRequestDto';
 import { UpdateDataEntryRowRequestDto } from '@shared/dtos/data-entry/UpdateDataEntryRowRequestDto';
 import { GenerateDataEntryUploadUrlRequestDto } from '@shared/dtos/data-entry/GenerateDataEntryUploadUrlRequestDto';
 import { ConfirmUniversityImageUploadRequestDto } from '@shared/dtos/data-entry/ConfirmUniversityImageUploadRequestDto';
 import { GenerateUniversityImageUploadUrlRequestDto } from '@shared/dtos/data-entry/GenerateUniversityImageUploadUrlRequestDto';
+import { ApplyToeflScaleRequestDto } from '@shared/dtos/data-entry/ApplyToeflScaleRequestDto';
 import { RemapDashboardEntryDegreesRequestDto } from '@shared/dtos/data-entry/RemapDashboardEntryDegreesRequestDto';
-import { RemapDashboardIntakesRequestDto } from '@shared/dtos/data-entry/RemapDashboardIntakesRequestDto';
+import {
+  RemapDashboardEnglishScoresRequestDto,
+  RemapDashboardIntakesRequestDto,
+  RemapDashboardTuitionRequestDto,
+} from '@shared/dtos/data-entry/RemapDashboardIntakesRequestDto';
 import { RemapDashboardScholarshipsRequestDto } from '@shared/dtos/data-entry/RemapDashboardScholarshipsRequestDto';
 import { RenameDashboardProgrammeRequestDto } from '@shared/dtos/data-entry/RenameDashboardProgrammeRequestDto';
 import {
@@ -60,6 +74,7 @@ export class DataEntryController {
     private readonly dashboard: DataEntryDashboardService,
     private readonly exportService: DataEntryExportService,
     private readonly applyFilled: DataEntryApplyFilledService,
+    private readonly unpublished: DataEntryUnpublishedCourseService,
   ) {}
 
   @Get('destinations')
@@ -110,6 +125,19 @@ export class DataEntryController {
     return this.dashboard.refresh(user.userId);
   }
 
+  @Get('dashboard/intakes/courses')
+  @ApiOperation({
+    summary:
+      'Catalog courses at a university for one intake, with staging row links',
+  })
+  listDashboardIntakeCourses(
+    @Query('uniId', ParseUUIDPipe) uniId: string,
+    @Query('year', ParseIntPipe) year: number,
+    @Query('month', ParseIntPipe) month: number,
+  ) {
+    return this.dashboard.listCoursesForIntake(uniId, year, month);
+  }
+
   @Post('dashboard/intakes/remap')
   @ApiOperation({
     summary:
@@ -130,6 +158,105 @@ export class DataEntryController {
     return this.dashboard.remapEntryDegrees(dto);
   }
 
+  @Get('dashboard/english-tests/:testId/courses')
+  @ApiOperation({
+    summary: 'Catalog courses that require this English test, with the score',
+  })
+  listDashboardEnglishTestCourses(
+    @Param('testId', ParseUUIDPipe) testId: string,
+    @Query('uniId') uniId?: string,
+    @Query('overall') overall?: string,
+    @Query('section') section?: string,
+  ) {
+    return this.dashboard.listCoursesForEnglishTest(testId, {
+      uniId,
+      overall,
+      section,
+    });
+  }
+
+  @Post('dashboard/english-tests/remap')
+  @ApiOperation({
+    summary:
+      'Change one English overall/section score for matching courses at a university',
+  })
+  remapDashboardEnglishScores(
+    @Body() dto: RemapDashboardEnglishScoresRequestDto,
+  ) {
+    return this.dashboard.remapEnglishScores(dto);
+  }
+
+  @Get('dashboard/english-tests/toefl-preview')
+  @ApiOperation({ summary: 'Distinct old TOEFL scores and the suggested 1–6 map' })
+  dashboardToeflPreview() {
+    return this.dashboard.toeflPreview();
+  }
+
+  @Post('dashboard/english-tests/toefl-scale')
+  @ApiOperation({ summary: 'Apply a reviewed TOEFL 1–6 map to catalog and course rows' })
+  applyDashboardToeflScale(@Body() dto: ApplyToeflScaleRequestDto) {
+    return this.dashboard.applyToeflScale(dto);
+  }
+
+  @Get('dashboard/tuition/courses')
+  @ApiOperation({
+    summary: 'Catalog courses at a university with this tuition fee',
+  })
+  listDashboardTuitionCourses(
+    @Query('uniId', ParseUUIDPipe) uniId: string,
+    @Query('currency') currency?: string,
+    @Query('amount') amount?: string,
+    @Query('year', ParseIntPipe) year?: number,
+    @Query('month', ParseIntPipe) month?: number,
+  ) {
+    return this.dashboard.listCoursesForTuition({
+      uniId,
+      currency: currency ?? '',
+      amount: amount ?? '',
+      year: year ?? 0,
+      month: month ?? 0,
+    });
+  }
+
+  @Post('dashboard/tuition/remap')
+  @ApiOperation({
+    summary: 'Change one tuition amount and currency for a university',
+  })
+  remapDashboardTuition(@Body() dto: RemapDashboardTuitionRequestDto) {
+    return this.dashboard.remapTuition(dto);
+  }
+
+  @Get('dashboard/programmes/:programmeId/courses')
+  @ApiOperation({
+    summary: 'Catalog courses for a programme, with staging row links',
+  })
+  listDashboardProgrammeCourses(
+    @Param('programmeId', ParseUUIDPipe) programmeId: string,
+  ) {
+    return this.dashboard.listCoursesForProgramme(programmeId);
+  }
+
+  @Get('dashboard/scholarships/courses')
+  @ApiOperation({
+    summary:
+      'Catalog courses matching one scholarship at a university, with staging row links',
+  })
+  listDashboardScholarshipCourses(
+    @Query('uniId', ParseUUIDPipe) uniId: string,
+    @Query('degreeId', ParseUUIDPipe) degreeId: string,
+    @Query('name') name?: string,
+    @Query('amount') amount?: string,
+    @Query('amountType') amountType?: string,
+  ) {
+    return this.dashboard.listCoursesForScholarship({
+      uniId,
+      degreeId,
+      name,
+      amount,
+      amountType,
+    });
+  }
+
   @Post('dashboard/programmes/rename')
   @ApiOperation({
     summary:
@@ -148,6 +275,166 @@ export class DataEntryController {
     @Body() dto: RemapDashboardScholarshipsRequestDto,
   ) {
     return this.dashboard.remapScholarships(dto);
+  }
+
+  @Get('unpublished/snapshot')
+  @ApiOperation({
+    summary: 'Cards for the latest unpublished course batch of each university',
+  })
+  unpublishedSnapshot() {
+    return this.unpublished.snapshot();
+  }
+
+  @Get('unpublished/degrees/:degreeName/courses')
+  @ApiOperation({
+    summary: 'Unpublished course rows for an awarded degree name',
+  })
+  unpublishedDegreeCourses(@Param('degreeName') degreeName: string) {
+    return this.unpublished.listCourses(decodeURIComponent(degreeName));
+  }
+
+  @Post('unpublished/courses/entry-degrees')
+  @ApiOperation({
+    summary: 'Set min/high degree names on matching unpublished course rows',
+  })
+  remapUnpublishedEntryDegrees(
+    @Body() dto: RemapUnpublishedEntryDegreesRequestDto,
+  ) {
+    return this.unpublished.remapEntryDegrees(dto);
+  }
+
+  @Get('unpublished/english-tests/courses')
+  @ApiOperation({
+    summary: 'Unpublished course rows that have a score for this English test',
+  })
+  unpublishedEnglishTestCourses(
+    @Query('name') name?: string,
+    @Query('batchId') batchId?: string,
+    @Query('overall') overall?: string,
+    @Query('section') section?: string,
+  ) {
+    return this.unpublished.listCoursesForEnglishTest(name ?? '', {
+      batchId,
+      overall,
+      section,
+    });
+  }
+
+  @Post('unpublished/english-tests/remap')
+  @ApiOperation({
+    summary:
+      'Change one English overall/section score on matching unpublished course rows',
+  })
+  remapUnpublishedEnglishScores(
+    @Body() dto: RemapUnpublishedEnglishScoresRequestDto,
+  ) {
+    return this.unpublished.remapEnglishScores(dto);
+  }
+
+  @Get('unpublished/english-tests/toefl-preview')
+  @ApiOperation({ summary: 'Distinct old TOEFL scores on unpublished course rows' })
+  unpublishedToeflPreview() {
+    return this.unpublished.toeflPreview();
+  }
+
+  @Post('unpublished/english-tests/toefl-scale')
+  @ApiOperation({ summary: 'Apply a reviewed TOEFL 1–6 map to unpublished course rows' })
+  applyUnpublishedToeflScale(@Body() dto: ApplyToeflScaleRequestDto) {
+    return this.unpublished.applyToeflScale(dto);
+  }
+
+  @Get('unpublished/tuition/courses')
+  @ApiOperation({
+    summary: 'Unpublished course rows with this tuition fee',
+  })
+  unpublishedTuitionCourses(
+    @Query('batchId', ParseUUIDPipe) batchId: string,
+    @Query('currency') currency?: string,
+    @Query('amount') amount?: string,
+    @Query('year', ParseIntPipe) year?: number,
+    @Query('month', ParseIntPipe) month?: number,
+  ) {
+    return this.unpublished.listCoursesForTuition({
+      batchId,
+      currency: currency ?? '',
+      amount: amount ?? '',
+      year: year ?? 0,
+      month: month ?? 0,
+    });
+  }
+
+  @Post('unpublished/tuition/remap')
+  @ApiOperation({
+    summary: 'Change tuition on matching unpublished course rows',
+  })
+  remapUnpublishedTuition(@Body() dto: RemapUnpublishedTuitionRequestDto) {
+    return this.unpublished.remapTuition(dto);
+  }
+
+  @Get('unpublished/programmes/courses')
+  @ApiOperation({
+    summary: 'Unpublished course rows with this programme name',
+  })
+  unpublishedProgrammeCourses(@Query('name') name?: string) {
+    return this.unpublished.listCoursesForProgramme(name ?? '');
+  }
+
+  @Get('unpublished/scholarships/courses')
+  @ApiOperation({
+    summary: 'Unpublished course rows matching one scholarship',
+  })
+  unpublishedScholarshipCourses(
+    @Query('batchId', ParseUUIDPipe) batchId: string,
+    @Query('degreeName') degreeName?: string,
+    @Query('name') name?: string,
+    @Query('amount') amount?: string,
+    @Query('amountType') amountType?: string,
+  ) {
+    return this.unpublished.listCoursesForScholarship({
+      batchId,
+      degreeName: degreeName ?? '',
+      name,
+      amount,
+      amountType,
+    });
+  }
+
+  @Post('unpublished/programmes/rename')
+  @ApiOperation({
+    summary: 'Rename programmeName on matching unpublished course rows',
+  })
+  renameUnpublishedProgramme(@Body() dto: RenameUnpublishedProgrammeRequestDto) {
+    return this.unpublished.renameProgramme(dto);
+  }
+
+  @Post('unpublished/scholarships/remap')
+  @ApiOperation({
+    summary: 'Change scholarship fields on matching unpublished course rows',
+  })
+  remapUnpublishedScholarships(
+    @Body() dto: RemapUnpublishedScholarshipsRequestDto,
+  ) {
+    return this.unpublished.remapScholarships(dto);
+  }
+
+  @Get('unpublished/intakes/courses')
+  @ApiOperation({
+    summary: 'Unpublished course rows whose intakeInfo includes this month',
+  })
+  unpublishedIntakeCourses(
+    @Query('batchId', ParseUUIDPipe) batchId: string,
+    @Query('year', ParseIntPipe) year: number,
+    @Query('month', ParseIntPipe) month: number,
+  ) {
+    return this.unpublished.listCoursesForIntake(batchId, year, month);
+  }
+
+  @Post('unpublished/intakes/remap')
+  @ApiOperation({
+    summary: 'Rewrite one intake label on unpublished course rows',
+  })
+  remapUnpublishedIntakes(@Body() dto: RemapUnpublishedIntakesRequestDto) {
+    return this.unpublished.remapIntakes(dto);
   }
 
   @Get('universities')
