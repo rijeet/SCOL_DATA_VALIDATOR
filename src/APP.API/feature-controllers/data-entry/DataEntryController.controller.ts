@@ -77,6 +77,7 @@ export class DataEntryController {
     private readonly unpublished: DataEntryUnpublishedCourseService,
   ) {}
 
+  /** Destination countries with staging batch counts for the admin home. */
   @Get('destinations')
   @ApiOperation({ summary: 'List destination countries with batch counts' })
   listDestinations() {
