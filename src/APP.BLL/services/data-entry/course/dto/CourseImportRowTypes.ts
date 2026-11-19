@@ -1,4 +1,5 @@
 import type { CsvRow } from '../../common/abstractions/CsvImportProcessor';
+import { mapImportedToefl } from '@shared/validation/toeflScale';
 import { CourseImportSchema } from '../CourseImportSchema';
 
 /** Normalized course CSV row (same shape as pipeline `CsvRow`). */
@@ -13,6 +14,12 @@ export function normalizeCourseCsvRow(row: CsvRow): CourseCsvRow {
     const v = row[key];
     out[key] = typeof v === 'string' ? v.trim() : '';
   }
+  const toefl = mapImportedToefl(
+    out.toeflMinOverall ?? '',
+    out.toeflMinSection ?? '',
+  );
+  out.toeflMinOverall = toefl.overall;
+  out.toeflMinSection = toefl.section;
   return out as CourseCsvRow;
 }
 
