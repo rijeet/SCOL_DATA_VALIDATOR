@@ -58,12 +58,9 @@ pids
 # Diagnostic reports (https://nodejs.org/api/report.html)
 report.[0-9]*.[0-9]*.[0-9]*.[0-9]*.json
 
-# Compiled files of migrations/
-migrations/*
-!migrations/*data-admin*
-!migrations/*dashboard*
-!migrations/*data-entry*
-dist/migrations/*
+# Local TypeORM migrations (kept on disk, not in git)
+migrations/
+dist/migrations/
 
 # uploadUniCourse - ignore entire folder
 uploadUniCourse/
