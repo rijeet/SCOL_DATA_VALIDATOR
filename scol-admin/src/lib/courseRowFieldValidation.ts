@@ -38,6 +38,10 @@ export const COURSE_ROW_REQUIRED_FIELDS = [
   'minGpa',
   'ieltsMinOverall',
   'ieltsMinSection',
+  'toeflMinOverall',
+  'toeflMinSection',
+  'pteMinOverall',
+  'pteMinSection',
   'scholarshipName',
   'scholarshipAmount',
   'scholarshipType',
@@ -77,8 +81,8 @@ const ENGLISH_SCORE_RULES: Record<
 > = {
   ieltsMinOverall: { max: 9, testLabel: 'IELTS overall' },
   ieltsMinSection: { max: 9, testLabel: 'IELTS minimum band' },
-  toeflMinOverall: { max: 120, testLabel: 'TOEFL overall' },
-  toeflMinSection: { max: 30, testLabel: 'TOEFL section' },
+  toeflMinOverall: { max: 6, testLabel: 'TOEFL overall' },
+  toeflMinSection: { max: 6, testLabel: 'TOEFL section' },
   pteMinOverall: { max: 90, testLabel: 'PTE overall' },
   pteMinSection: { max: 90, testLabel: 'PTE section' },
 };

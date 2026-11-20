@@ -1,13 +1,11 @@
 import { useEffect, useRef, useState } from 'react';
 import {
-  CloudDownload,
   CloudUpload,
   Download,
   FileSpreadsheet,
   LogOut,
-  RefreshCw,
 } from 'lucide-react';
-import { Link, useNavigate } from 'react-router-dom';
+import { useNavigate } from 'react-router-dom';
 import { LoadingSplash } from '../components/LoadingSplash';
 import { apiFetch, clearAccessToken } from '../lib/api';
 import { applyFilledCsv } from '../lib/applyFilledCsv';
@@ -43,12 +41,6 @@ type UniversityListItem = {
   staging?: StagingSummary | null;
 };
 
-type BatchCreateResponse = {
-  batchId: string;
-  rowCount: number;
-  invalidRowCount: number;
-};
-
 export function UniversitiesPage() {
   const navigate = useNavigate();
   const [universities, setUniversities] = useState<UniversityListItem[]>([]);
@@ -56,7 +48,7 @@ export function UniversitiesPage() {
   const [error, setError] = useState<string | null>(null);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [busyAction, setBusyAction] = useState<
-    'import' | 'continue' | 'sync' | 'export' | 'export-fix' | 'apply' | null
+    'continue' | 'export' | 'export-fix' | 'apply' | null
   >(null);
   const filledInputRef = useRef<HTMLInputElement>(null);
   const applyUniRef = useRef<UniversityListItem | null>(null);
@@ -122,41 +114,6 @@ export function UniversitiesPage() {
     }
   }
 
-  async function importFromCloud(uni: UniversityListItem) {
-    setBusyId(uni.sysUniversityId);
-    setBusyAction('import');
-    setError(null);
-    try {
-      const res = await apiFetch<BatchCreateResponse>('/data-entry/batches', {
-        method: 'POST',
-        body: JSON.stringify({ sysUniversityId: uni.sysUniversityId }),
-      });
-      setUniversities((prev) =>
-        prev.map((u) =>
-          u.sysUniversityId === uni.sysUniversityId
-            ? {
-                ...u,
-                staging: {
-                  batchId: res.batchId,
-                  rowCount: res.rowCount,
-                  invalidRowCount: res.invalidRowCount,
-                  validRowCount: Math.max(0, res.rowCount - res.invalidRowCount),
-                  status: 'READY',
-                  publishedAt: null,
-                },
-              }
-            : u,
-        ),
-      );
-      await openRowEditor(uni, res.batchId, res.rowCount, res.invalidRowCount);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Import failed');
-    } finally {
-      setBusyId(null);
-      setBusyAction(null);
-    }
-  }
-
   async function exportCourses(uni: UniversityListItem, format?: 'data-fix') {
     const staging = uni.staging;
     if (!staging) return;
@@ -203,32 +160,6 @@ export function UniversitiesPage() {
     }
   }
 
-  async function syncFromCloudinary() {
-    setBusyId('sync');
-    setBusyAction('sync');
-    setError(null);
-    try {
-      const res = await apiFetch<{ created: string[]; skipped: number }>(
-        '/data-entry/universities/sync-from-cloud',
-        { method: 'POST', body: JSON.stringify({}) },
-      );
-      const data = await apiFetch<UniversityListItem[]>('/data-entry/universities');
-      setUniversities(data);
-      if (res.created.length === 0) {
-        setError(
-          res.skipped > 0
-            ? 'No new universities to add (names already in database or Cloudinary list empty).'
-            : 'Cloudinary returned no university folders. Check SCOL_DATA and API limits.',
-        );
-      }
-    } catch (e) {
-      setError(e instanceof Error ? e.message : 'Sync from Cloudinary failed');
-    } finally {
-      setBusyId(null);
-      setBusyAction(null);
-    }
-  }
-
   function logout() {
     clearWorkSession();
     clearAccessToken();
@@ -240,25 +171,6 @@ export function UniversitiesPage() {
       <LoadingSplash
         title="Loading universities"
         subtitle="Reading sys_Universities from database…"
-      />
-    );
-  }
-
-  if (busyId && busyAction === 'sync') {
-    return (
-      <LoadingSplash
-        title="Syncing universities"
-        subtitle="Creating sys_Universities rows from Cloudinary folder names…"
-      />
-    );
-  }
-
-  if (busyId && busyAction === 'import') {
-    const name = universities.find((u) => u.sysUniversityId === busyId)?.uniName;
-    return (
-      <LoadingSplash
-        title="Importing courses"
-        subtitle={`Cloudinary → staging DB for ${name ?? 'university'}…`}
       />
     );
   }
@@ -279,18 +191,11 @@ export function UniversitiesPage() {
         <div>
           <h1 className="text-2xl font-bold">Choose university</h1>
           <p className="mt-1 text-sm font-bold text-slate-600">
-            List from database. Import from Cloudinary only when you need course
-            rows in staging.
+            List from the database. Import a course CSV from the destination
+            page when a university has no staging rows yet.
           </p>
         </div>
         <div className="flex items-center gap-4">
-          <Link
-            to="/reimport"
-            className="inline-flex items-center gap-1.5 text-sm font-bold text-slate-600 hover:text-slate-900"
-          >
-            <RefreshCw className="h-4 w-4" aria-hidden />
-            Re-import
-          </Link>
           <button
             type="button"
             onClick={logout}
@@ -317,31 +222,6 @@ export function UniversitiesPage() {
         }}
       />
 
-      <section className="mb-6 rounded-lg border border-sky-200 bg-sky-50/60 p-4">
-        <h2 className="text-sm font-bold uppercase tracking-wide text-sky-900">
-          Optional — Cloudinary
-        </h2>
-        <p className="mt-1 text-sm font-bold text-sky-950/80">
-          Step 1: pull university <strong>names</strong> from{' '}
-          <code className="text-xs">SCOL_DATA</code> into the database. Step 2: use{' '}
-          <strong>Import Cloudinary</strong> on a row to load course CSV into staging.
-        </p>
-        <button
-          type="button"
-          disabled={Boolean(busyId)}
-          onClick={() => syncFromCloudinary()}
-          className="mt-3 inline-flex items-center gap-1.5 rounded bg-sky-800 px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
-        >
-          <CloudDownload className="h-4 w-4" aria-hidden />
-          Sync university names from Cloudinary
-        </button>
-        <p className="mt-2 text-xs font-bold text-sky-900/70">
-          If you see &quot;Internal server error&quot;, run{' '}
-          <code className="text-[11px]">npm run typeorm:run</code> in scol-backend
-          (creates sys_Universities).
-        </p>
-      </section>
-
       <ul className="space-y-3">
         {universities.map((u) => {
           const staging = u.staging;
@@ -361,7 +241,7 @@ export function UniversitiesPage() {
                   <p className="text-sm font-bold text-slate-500">
                     {staging
                       ? `Staging: ${staging.rowCount} courses · ${staging.validRowCount} valid · ${stagingStatusLabel(staging)}`
-                      : 'No staging data yet — optional Cloudinary import'}
+                      : 'No staging data yet'}
                   </p>
                   {staging?.status === 'PUBLISHED' && (
                     <span className="mt-1 inline-block rounded bg-emerald-100 px-2 py-0.5 text-xs font-bold text-emerald-800">
@@ -423,18 +303,6 @@ export function UniversitiesPage() {
                     </button>
                   </>
                 ) : null}
-                {!staging && (
-                  <button
-                    type="button"
-                    disabled={busy}
-                    onClick={() => importFromCloud(u)}
-                    className="inline-flex items-center gap-1.5 rounded border border-slate-300 bg-white px-3 py-2 text-sm font-bold text-slate-800 disabled:opacity-40"
-                    title="Import *_reviewed.csv from Cloudinary"
-                  >
-                    <CloudDownload className="h-4 w-4" aria-hidden />
-                    Import Cloudinary
-                  </button>
-                )}
               </div>
             </li>
           );
@@ -442,9 +310,8 @@ export function UniversitiesPage() {
       </ul>
       {universities.length === 0 && (
         <p className="font-bold text-slate-600">
-          Database list is empty. Use{' '}
-          <strong>Sync university names from Cloudinary</strong> above, or insert rows
-          into <code>sys_Universities</code> manually.
+          Database list is empty. Add rows to <code>sys_Universities</code>, then
+          import a CSV from the destination page.
         </p>
       )}
     </div>

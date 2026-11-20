@@ -53,7 +53,7 @@ export function DestinationsPage() {
       <header className="mb-6">
         <h1 className="text-2xl font-bold">Destinations</h1>
         <p className="mt-1 text-sm font-bold text-slate-600">
-          Pick a country, then upload a university or course CSV to Cloudinary.
+          Pick a country, then upload a university or course CSV.
         </p>
       </header>
       {error && <p className="mb-4 text-sm font-bold text-red-600">{error}</p>}

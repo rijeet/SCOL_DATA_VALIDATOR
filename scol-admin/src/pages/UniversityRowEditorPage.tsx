@@ -16,10 +16,9 @@ import {
   fetchInvalidRowIndexes,
   resolveInitialRowIndex,
 } from '../lib/batchInvalidRows';
-import {
-  getJsonParseError,
-  prettifyJson,
-} from '../lib/prettifyJson';
+import { MetaBlockEditor } from '../components/MetaBlockEditor';
+import { metaFieldError } from '../lib/metaBlocks';
+import { prettifyJson } from '../lib/prettifyJson';
 import {
   campusLinkDraft,
   isPostPublishUniEditableField,
@@ -346,11 +345,6 @@ export function UniversityRowEditorPage() {
     setField('campusLifeLinks', serializeCampusLifeLinks(links));
   }
 
-  function formatRanking() {
-    const pretty = prettifyJson(draft.rankingMetaData ?? '');
-    setField('rankingMetaData', pretty);
-  }
-
   async function uploadUniversityImage(
     kind: 'logo' | 'cover',
     file: File,
@@ -458,7 +452,7 @@ export function UniversityRowEditorPage() {
   const addressText = (draft.address ?? '').trim() || locLine;
   const mapHref = parseLocationMapHref(draft.locationMapMetaData ?? '').href;
   const rowInvalid = row ? !row.isValid : false;
-  const rankingJsonError = getJsonParseError(draft.rankingMetaData ?? '');
+  const rankingJsonError = metaFieldError(draft.rankingMetaData ?? '');
   const campusError = row?.fieldErrors.campusLifeLinks;
   const commissionDirty = Boolean(
     row &&
@@ -963,36 +957,22 @@ export function UniversityRowEditorPage() {
                     if (key === 'rankingMetaData') {
                       return (
                         <div key={key} className="sm:col-span-2">
-                          <div className="mb-1 flex items-center justify-between gap-2">
-                            <span className="text-sm font-bold text-slate-700">
-                              {LABELS[key]}
-                              <span className="ml-0.5 text-red-600">*</span>
-                            </span>
-                            <button
-                              type="button"
-                              onClick={formatRanking}
-                              className="rounded border border-slate-300 px-2 py-0.5 text-xs font-bold text-slate-700 hover:bg-slate-50"
-                            >
-                              Format JSON
-                            </button>
-                          </div>
+                          <span className="text-sm font-bold text-slate-700">
+                            {LABELS[key]}
+                            <span className="ml-0.5 text-red-600">*</span>
+                          </span>
                           <FieldErrorTooltip
                             fieldKey={key}
                             message={err}
                             jsonError={rankingJsonError}
                             required
                           >
-                            <textarea
+                            <MetaBlockEditor
+                              resetKey={idx}
                               value={draft[key] ?? ''}
-                              onChange={(e) => setField(key, e.target.value)}
-                              onBlur={() => formatRanking()}
-                              spellCheck={false}
-                              rows={12}
-                              className={`mt-1 w-full rounded border px-2 py-2 font-mono text-xs font-medium leading-5 ${
-                                err || rankingJsonError
-                                  ? 'border-red-500 bg-red-50 text-red-950'
-                                  : 'border-slate-300'
-                              }`}
+                              invalid={Boolean(err || rankingJsonError)}
+                              onChange={(next) => setField(key, next)}
+                              className="mt-1"
                             />
                           </FieldErrorTooltip>
                         </div>

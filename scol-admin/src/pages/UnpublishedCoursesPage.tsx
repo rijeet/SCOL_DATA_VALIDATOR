@@ -15,6 +15,7 @@ import {
 } from 'lucide-react';
 import { AdminShell } from '../components/AdminShell';
 import { ConfirmDialog } from '../components/ConfirmDialog';
+import { MetaBlockEditor } from '../components/MetaBlockEditor';
 import { apiFetch } from '../lib/api';
 import { AMOUNT_TYPES, normalizeCommissionType } from '../lib/amountTypes';
 import { DEGREE_SEEDS } from '../lib/degreeSeeds';
@@ -1092,21 +1093,21 @@ export function UnpublishedCoursesPage() {
                 const key = `${group.name}\0${group.amount}`;
                 return (
                   <div key={key} className="mb-3">
-                  <label className="mb-2 block text-sm font-bold text-slate-700">
-                    {group.name || 'Scholarship'} · {group.amount} · {group.courseCount}
-                    <textarea
-                      className="mt-1 block w-full rounded-lg border border-slate-300 px-2 py-1.5 text-xs"
-                      rows={2}
-                      placeholder='[{"subtitle":"…","description":["…"]}]'
+                  <div className="mb-2">
+                    <p className="text-sm font-bold text-slate-700">
+                      {group.name || 'Scholarship'} · {group.amount} · {group.courseCount}
+                    </p>
+                    <MetaBlockEditor
+                      className="mt-1"
                       value={schMetaFills[key] ?? ''}
-                      onChange={(e) =>
+                      onChange={(next) =>
                         setSchMetaFills((current) => ({
                           ...current,
-                          [key]: e.target.value,
+                          [key]: next,
                         }))
                       }
                     />
-                  </label>
+                  </div>
                   <MetaCourseList courses={group.courses ?? []} />
                   </div>
                 );

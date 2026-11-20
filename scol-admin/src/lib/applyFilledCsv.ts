@@ -1,8 +1,8 @@
 import { apiFetch } from './api';
 import {
-  uploadFileToCloudinary,
-  type CloudinarySignedUpload,
-} from './cloudinaryUpload';
+  uploadPrivateObject,
+  type PrivateObjectUpload,
+} from './privateObjectUpload';
 
 export type ApplyFilledSkip = {
   courseKey: string;
@@ -16,14 +16,14 @@ export type ApplyFilledResult = {
 };
 
 /**
- * Upload a DATA FIX 4_col_filled CSV to Cloudinary, then patch staging + catalog
+ * Upload a DATA FIX 4_col_filled CSV to private storage, then patch staging + catalog
  * by courseKey. Does not replace the original course CSV.
  */
 export async function applyFilledCsv(
   batchId: string,
   file: File,
 ): Promise<ApplyFilledResult> {
-  const signed = await apiFetch<{ csv: CloudinarySignedUpload }>(
+  const signed = await apiFetch<{ csv: PrivateObjectUpload }>(
     `/data-entry/batches/${batchId}/apply-filled-upload-url`,
     {
       method: 'POST',
@@ -33,7 +33,7 @@ export async function applyFilledCsv(
       }),
     },
   );
-  await uploadFileToCloudinary(file, signed.csv);
+  await uploadPrivateObject(file, signed.csv);
   return apiFetch<ApplyFilledResult>(
     `/data-entry/batches/${batchId}/apply-filled-confirm`,
     { method: 'POST', body: JSON.stringify({}) },

@@ -43,7 +43,7 @@ export function statusLabel(b: BatchItem): string {
   if (b.status === 'PUBLISHED') return 'Published';
   if (b.status === 'VALIDATED') return 'Ready to publish';
   if (b.status === 'FAILED') return 'Failed';
-  if (b.status === 'AWAITING_UPLOAD') return 'Waiting for Cloudinary upload';
+  if (b.status === 'AWAITING_UPLOAD') return 'Waiting for upload';
   if (b.invalidRowCount > 0) return `${b.invalidRowCount} to fix`;
   return b.status;
 }

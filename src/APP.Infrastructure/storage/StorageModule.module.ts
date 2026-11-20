@@ -6,7 +6,7 @@ import { IStorageService } from '@shared/tokens/injection.tokens';
 /**
  * Storage Module (Infrastructure)
  *
- * Private scol-documents via IStorageService; public scol-assets via
+ * Private scol-data via IStorageService; public scol-assets via
  * PublicAssetStorageService (university logo/cover).
  */
 @Module({

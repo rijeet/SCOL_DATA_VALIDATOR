@@ -6,7 +6,6 @@ import { FieldErrorTooltip } from '../components/FieldErrorTooltip';
 import { LoadingSplash } from '../components/LoadingSplash';
 import { AcademicReqPanel } from '../components/AcademicReqPanel';
 import { CourseUrlReferencePanel } from '../components/CourseUrlReferencePanel';
-import { UniversityHelpersPanel } from '../components/UniversityHelpersPanel';
 import { apiFetch } from '../lib/api';
 import {
   adjacentInvalidIndex,
@@ -26,11 +25,9 @@ import {
   isCourseRowFieldRequired,
   validateCourseRowScoreAndCompleteness,
 } from '../lib/courseRowFieldValidation';
-import {
-  getJsonParseError,
-  prettifyJson,
-  prettifyMetaFields,
-} from '../lib/prettifyJson';
+import { MetaBlockEditor } from '../components/MetaBlockEditor';
+import { metaFieldError } from '../lib/metaBlocks';
+import { prettifyMetaFields } from '../lib/prettifyJson';
 import {
   clearWorkSession,
   setWorkSession,
@@ -176,7 +173,6 @@ export function RowEditorPage() {
   const [publishError, setPublishError] = useState<string | null>(null);
   const [publishNotice, setPublishNotice] = useState<PublishResult | null>(null);
   const [invalidRows, setInvalidRows] = useState<number[]>([]);
-  const [helpersOpen, setHelpersOpen] = useState(false);
   const [academicReqOpen, setAcademicReqOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [jumpRowInput, setJumpRowInput] = useState('');
@@ -671,27 +667,10 @@ export function RowEditorPage() {
     );
   }
 
-  function handleMetaBlur(key: string) {
-    const raw = draftRef.current[key] ?? '';
-    const pretty = prettifyJson(raw);
-    if (pretty !== raw) {
-      const next = { ...draftRef.current, [key]: pretty };
-      draftRef.current = next;
-      setDraft(next);
-    }
-    void flushSave();
-  }
-
-  function formatMetaField(key: string) {
-    const pretty = prettifyJson(draftRef.current[key] ?? '');
-    setField(key, pretty);
-    void flushSave();
-  }
-
   function renderMetaPanel(key: string, title: string, tint: string) {
     if (!hasField(key, draft, row)) return null;
     const value = draft[key] ?? '';
-    const jsonErr = getJsonParseError(value);
+    const jsonErr = metaFieldError(value);
     const serverErr = displayFieldErrors[key];
     return (
       <section
@@ -727,13 +706,6 @@ export function RowEditorPage() {
               </FieldErrorTooltip>
             )}
           </div>
-          <button
-            type="button"
-            onClick={() => formatMetaField(key)}
-            className="shrink-0 rounded border border-slate-300 px-1.5 py-0.5 text-sm font-bold text-slate-600 hover:bg-slate-50"
-          >
-            Format JSON
-          </button>
         </header>
         <FieldErrorTooltip
           fieldKey={key}
@@ -741,17 +713,13 @@ export function RowEditorPage() {
           jsonError={jsonErr}
           className="flex min-h-0 flex-1 flex-col"
         >
-          <textarea
-            className={inputClass(
-              key,
-              `min-h-0 flex-1 resize-none border-0 px-2 py-2 font-mono text-sm font-bold leading-relaxed whitespace-pre shadow-none focus:ring-1 focus:ring-slate-300 ${jsonErr && value.trim() ? 'bg-red-50/50' : 'bg-slate-50/40'
-              }`,
-            )}
+          <MetaBlockEditor
+            resetKey={`${idx}:${key}`}
             value={value}
-            onChange={(e) => setField(key, e.target.value)}
-            onBlur={() => handleMetaBlur(key)}
-            spellCheck={false}
-            aria-invalid={Boolean(serverErr || jsonErr)}
+            invalid={Boolean(serverErr || jsonErr)}
+            onChange={(next) => setField(key, next)}
+            onBlur={() => void flushSave()}
+            className="min-h-0 flex-1 overflow-auto p-2"
           />
         </FieldErrorTooltip>
       </section>
@@ -1133,16 +1101,6 @@ export function RowEditorPage() {
               Academic Req
             </button>
           )}
-          {batch?.universityKey && !batch.sysCountryId && (
-            <button
-              type="button"
-              onClick={() => setHelpersOpen(true)}
-              className="whitespace-nowrap rounded border border-slate-300 px-3 py-1.5 text-sm font-bold hover:bg-slate-50"
-            >
-              Helpers
-            </button>
-          )}
-
           {publishReadiness?.canPublish && (
             <button
               type="button"
@@ -1553,7 +1511,7 @@ export function RowEditorPage() {
                   {metaTabs.map((tab) => {
                     const jsonErr =
                       tab.key !== 'errorReason'
-                        ? getJsonParseError(draft[tab.key] ?? '')
+                        ? metaFieldError(draft[tab.key] ?? '')
                         : null;
                     const serverErr = displayFieldErrors[tab.key];
                     const hasIssue = Boolean(serverErr || jsonErr);
@@ -1614,14 +1572,6 @@ export function RowEditorPage() {
           onClose={() => setAcademicReqOpen(false)}
         />
       )}
-      {batch?.universityKey && !batch.sysCountryId && (
-        <UniversityHelpersPanel
-          universityKey={batch.universityKey}
-          open={helpersOpen}
-          onClose={() => setHelpersOpen(false)}
-        />
-      )}
-
       <ConfirmDialog
         open={confirmPublish}
         title="Publish courses?"

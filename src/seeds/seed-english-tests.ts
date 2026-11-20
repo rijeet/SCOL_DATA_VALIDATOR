@@ -7,7 +7,7 @@ import type { ILogger as ILoggerInterface } from '@shared/interfaces/logging';
 const ENGLISH_TEST_SEEDS = [
   { testName: 'IELTS', maxScore: '9.00' },
   { testName: 'PTE', maxScore: '90.00' },
-  { testName: 'TOEFL', maxScore: '120.00' },
+  { testName: 'TOEFL', maxScore: '6.00' },
 ] as const;
 
 async function bootstrap() {

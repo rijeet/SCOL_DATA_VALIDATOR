@@ -6,8 +6,8 @@ import { LoadingSplash } from '../components/LoadingSplash';
 import { apiFetch } from '../lib/api';
 import type { BatchItem, BatchKind, CountryUniversityItem } from '../lib/batches';
 import { parseBatchKind } from '../lib/batches';
-import { uploadFileToCloudinary } from '../lib/cloudinaryUpload';
-import type { CloudinarySignedUpload } from '../lib/cloudinaryUpload';
+import { uploadPrivateObject } from '../lib/privateObjectUpload';
+import type { PrivateObjectUpload } from '../lib/privateObjectUpload';
 import { HELPER_TABS, type HelperKey } from '../lib/helpers';
 import { resolveInitialRowIndex } from '../lib/initialWorkRow';
 import { setWorkSession } from '../lib/workSession';
@@ -15,8 +15,8 @@ import type { DestinationItem } from '../lib/batches';
 
 type UploadUrlResponse = {
   batchId: string;
-  csv: CloudinarySignedUpload;
-  helpers: Partial<Record<HelperKey, CloudinarySignedUpload>>;
+  csv: PrivateObjectUpload;
+  helpers: Partial<Record<HelperKey, PrivateObjectUpload>>;
 };
 
 export function ImportCsvPage() {
@@ -108,12 +108,12 @@ export function ImportCsvPage() {
           body: JSON.stringify(body),
         },
       );
-      await uploadFileToCloudinary(csvFile, signed.csv);
+      await uploadPrivateObject(csvFile, signed.csv);
       for (const key of helperKeys) {
         const file = helperFiles[key];
         const payload = signed.helpers[key];
         if (file && payload) {
-          await uploadFileToCloudinary(file, payload);
+          await uploadPrivateObject(file, payload);
         }
       }
       const batch = await apiFetch<BatchItem>(
@@ -151,8 +151,8 @@ export function ImportCsvPage() {
     return (
       <AdminShell>
         <LoadingSplash
-          title="Uploading to Cloudinary"
-          subtitle="Signing, uploading CSV, then staging rows from Cloudinary…"
+          title="Uploading files"
+          subtitle="Uploading the CSV and helpers, then staging rows…"
         />
       </AdminShell>
     );
@@ -175,7 +175,7 @@ export function ImportCsvPage() {
             {uploadType === 'COURSE' && uniName
               ? `${uniName} · ${title}`
               : title}
-            . Files go to Cloudinary; the API only reads them.
+            . Files go to private storage; the API only reads them.
           </p>
         </header>
 
@@ -232,7 +232,7 @@ export function ImportCsvPage() {
                 onClick={() => void submitUpload()}
                 className="rounded bg-emerald-700 px-4 py-2 text-sm font-bold text-white disabled:opacity-40"
               >
-                Upload to Cloudinary
+                Upload
               </button>
               <Link
                 to={listPath}

@@ -79,8 +79,8 @@ const ENGLISH_SCORE_FIELDS = [
     name: 'TOEFL',
     field: 'toeflMinOverall',
     section: 'toeflMinSection',
-    max: 120,
-    sectionMax: 30,
+    max: 6,
+    sectionMax: 6,
   },
 ] as const;
 

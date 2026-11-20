@@ -2,13 +2,15 @@ import { randomUUID } from 'node:crypto';
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import { AppDbContext } from '@infra/db/typeorm/AppDbContext';
-import { CloudinaryUniversityDataService } from '@infra/cloudinary/CloudinaryUniversityData.service';
 import { PublicAssetStorageService } from '@infra/storage/backblaze/PublicAssetStorageService';
+import type { IStorageService as StorageClient } from '@shared/interfaces/IStorageService.interface';
+import { IStorageService } from '@shared/tokens/injection.tokens';
 import {
   DataEntryBatches,
   DataEntryBatchStatus,
@@ -52,23 +54,20 @@ import { ensureCourseKeys } from './assignCourseKeys';
 import { DataEntryPublishService } from './DataEntryPublishService';
 import type { CsvRow } from '../common/abstractions/CsvImportProcessor';
 
-export type CloudinarySignedUploadDto = {
+export type PrivateObjectUpload = {
   uploadUrl: string;
-  apiKey: string;
-  timestamp: number;
-  signature: string;
-  publicId: string;
-  folder?: string;
-  resourceType: 'raw' | 'image';
-  overwrite: string;
-  tags?: string;
+  storageKey: string;
+  headers: { 'Content-Type': string };
 };
+
+const CSV_CONTENT_TYPE = 'text/csv';
+const MARKDOWN_CONTENT_TYPE = 'text/markdown';
 
 @Injectable()
 export class DataEntryUploadService {
   constructor(
     private readonly db: AppDbContext,
-    private readonly cloudinary: CloudinaryUniversityDataService,
+    @Inject(IStorageService) private readonly storage: StorageClient,
     private readonly publicAssets: PublicAssetStorageService,
     private readonly keys: DataEntryStorageKeyBuilder,
     private readonly courseValidator: CourseRowValidator,
@@ -77,13 +76,25 @@ export class DataEntryUploadService {
     private readonly config: ConfigService,
   ) {}
 
+  private async presign(
+    key: string,
+    contentType: string,
+  ): Promise<PrivateObjectUpload> {
+    const uploadUrl = await this.storage.generateUploadUrl(key, contentType);
+    return {
+      uploadUrl,
+      storageKey: key,
+      headers: { 'Content-Type': contentType },
+    };
+  }
+
   async generateUploadUrl(
     userId: string,
     dto: GenerateDataEntryUploadUrlRequestDto,
   ): Promise<{
     batchId: string;
-    csv: CloudinarySignedUploadDto;
-    helpers: Partial<Record<DataEntryHelperKey, CloudinarySignedUploadDto>>;
+    csv: PrivateObjectUpload;
+    helpers: Partial<Record<DataEntryHelperKey, PrivateObjectUpload>>;
   }> {
     if (!dto.fileName.toLowerCase().endsWith('.csv')) {
       throw new BadRequestException('Only .csv files are accepted');
@@ -142,9 +153,8 @@ export class DataEntryUploadService {
       uniSlug,
     );
     const helperObjectKeys: Partial<Record<DataEntryHelperKey, string>> = {};
-    const helpers: Partial<
-      Record<DataEntryHelperKey, CloudinarySignedUploadDto>
-    > = {};
+    const helpers: Partial<Record<DataEntryHelperKey, PrivateObjectUpload>> =
+      {};
     for (const helperKey of helperKeys) {
       const publicId = this.keys.helperPublicId(
         countryCode,
@@ -154,7 +164,7 @@ export class DataEntryUploadService {
         uniSlug,
       );
       helperObjectKeys[helperKey] = publicId;
-      helpers[helperKey] = this.cloudinary.generateSignedRawUpload(publicId);
+      helpers[helperKey] = await this.presign(publicId, MARKDOWN_CONTENT_TYPE);
     }
 
     await this.db.Set(DataEntryBatches).insert({
@@ -175,7 +185,7 @@ export class DataEntryUploadService {
 
     return {
       batchId,
-      csv: this.cloudinary.generateSignedRawUpload(csvPublicId),
+      csv: await this.presign(csvPublicId, CSV_CONTENT_TYPE),
       helpers,
     };
   }
@@ -191,17 +201,8 @@ export class DataEntryUploadService {
       throw new ConflictException('Batch is not awaiting upload');
     }
 
-    const resolvedPublicId = await this.cloudinary.resolveRawPublicId(
-      batch.csvObjectKey,
-    );
-    if (!resolvedPublicId) {
-      throw new BadRequestException(
-        'CSV not found in Cloudinary. Upload it first.',
-      );
-    }
-    if (resolvedPublicId !== batch.csvObjectKey) {
-      batch.csvObjectKey = resolvedPublicId;
-      await this.db.Set(DataEntryBatches).save(batch);
+    if (!(await this.storage.objectExists(batch.csvObjectKey))) {
+      throw new BadRequestException('CSV not found. Upload it first.');
     }
 
     batch.status = DataEntryBatchStatus.IMPORTING;
@@ -209,7 +210,7 @@ export class DataEntryUploadService {
     await this.db.Set(DataEntryBatches).save(batch);
 
     try {
-      const csvText = await this.cloudinary.fetchRawText(batch.csvObjectKey);
+      const csvText = await this.storage.getObjectAsText(batch.csvObjectKey);
       if (batch.batchType === DataEntryBatchType.UNIVERSITY) {
         await this.stageUniversityCsv(batch, csvText);
       } else {
@@ -437,7 +438,10 @@ export class DataEntryUploadService {
     if (!publicId) {
       throw new NotFoundException(`Helper "${helperKey}" was not uploaded`);
     }
-    const markdown = await this.cloudinary.fetchRawText(publicId);
+    if (!(await this.storage.objectExists(publicId))) {
+      throw new NotFoundException(`Helper "${helperKey}" was not uploaded`);
+    }
+    const markdown = await this.storage.getObjectAsText(publicId);
     return { helperKey, markdown };
   }
 
@@ -546,9 +550,8 @@ export class DataEntryUploadService {
     for (const helperKey of DATA_ENTRY_HELPER_KEYS) {
       const publicId = keys[helperKey];
       if (!publicId) continue;
-      const resolved = await this.cloudinary.resolveRawPublicId(publicId);
-      if (!resolved) continue;
-      docs[helperKey] = await this.cloudinary.fetchRawText(resolved);
+      if (!(await this.storage.objectExists(publicId))) continue;
+      docs[helperKey] = await this.storage.getObjectAsText(publicId);
     }
     batch.helperDocs = docs;
     await this.db.Set(DataEntryBatches).save(batch);
