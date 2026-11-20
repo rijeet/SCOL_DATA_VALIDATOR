@@ -4,7 +4,7 @@ A NestJS-based REST API backend built with Clean Architecture principles. This r
 
 ## Data admin (`scol-admin`) — quick runbook
 
-### What it does
+### What it does 
 
 | Step | Where | What |
 |------|--------|------|
