@@ -7,16 +7,16 @@ export const FIELD_FORMAT_HINTS: Record<string, string> = {
   minDegreeName: 'Choose SSC, HSC, BSc, or MSc',
   higherDegreeName: 'Choose SSC, HSC, BSc, or MSc — required when higher GPA is filled in',
   AcademicRequirementsMetaData:
-    'JSON array of items: [{"subtitle":"…","description":"…"}]. Click Format JSON after fixing syntax.',
+    'Subtitle plus a description. Each line is one paragraph.',
   feesMetaData:
-    'JSON array: [{"subtitle":"Fees","description":"…"}]. Click Format JSON after fixing syntax.',
+    'Subtitle plus a description. Each line is one paragraph.',
   scholarshipMetaData:
-    'Required when the amount is greater than 0. Leave empty when the amount is 0 or there is no scholarship. JSON array: [{"subtitle":"…","description":["…"]}]',
+    'Required when the amount is greater than 0. Leave empty when the amount is 0 or there is no scholarship. Subtitle plus a description, one line per paragraph.',
   scholarshipAmount: 'Plain digits only, e.g. 5500 — no commas, currency symbols, or spaces',
   ieltsMinOverall: '0–9 (e.g. 6.5). Overall cannot exceed 9.',
   ieltsMinSection: '0–9 (e.g. 5.5). Each band cannot exceed 9.',
-  toeflMinOverall: '0–120 (e.g. 88)',
-  toeflMinSection: '0–30 per section (e.g. 17)',
+  toeflMinOverall: '0–6 (e.g. 4.5)',
+  toeflMinSection: '0–6 (e.g. 4)',
   pteMinOverall: '0–90 (e.g. 61)',
   pteMinSection: '0–90 (e.g. 59)',
   tuitionFee: 'Plain digits only, e.g. 19500 — no commas, currency symbols, or spaces',
@@ -42,7 +42,7 @@ export const FIELD_FORMAT_HINTS: Record<string, string> = {
   locationMapMetaData:
     'Google Maps URL, or JSON like {"href":"https://maps.google.com/...","text":"Map"}',
   rankingMetaData:
-    'Pretty JSON array: [{"subtitle":"Ranking","description":["…"]}]. Click Format JSON after fixing syntax.',
+    'Subtitle plus a description. Each line is one paragraph, for example one ranking source.',
 };
 
 export function hintForField(fieldKey: string): string | undefined {

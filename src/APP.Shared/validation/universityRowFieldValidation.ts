@@ -1,4 +1,5 @@
 import { normalizeCommissionType } from '@shared/constants/amountTypes.constants';
+import { rankingMetaError } from '@shared/validation/metaDataItems';
 
 export const UNIVERSITY_ROW_REQUIRED_FIELDS = [
   'uniName',
@@ -197,19 +198,8 @@ export function validateUniversityRowFields(
     }
   }
 
-  const ranking = (row.rankingMetaData ?? '').trim();
-  if (ranking) {
-    try {
-      const parsed = JSON.parse(ranking) as unknown;
-      if (!Array.isArray(parsed)) {
-        errors.rankingMetaData = 'Must be a JSON array';
-      } else if (parsed.length === 0) {
-        errors.rankingMetaData = 'Must be a non-empty JSON array';
-      }
-    } catch {
-      errors.rankingMetaData = 'Must be valid JSON';
-    }
-  }
+  const rankingError = rankingMetaError(row.rankingMetaData ?? '');
+  if (rankingError) errors.rankingMetaData = rankingError;
 
   return errors;
 }

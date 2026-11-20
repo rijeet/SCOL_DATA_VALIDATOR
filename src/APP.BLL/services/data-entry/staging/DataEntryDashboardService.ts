@@ -2363,8 +2363,8 @@ const ENGLISH_FIELD_SPECS: Record<
   TOEFL: {
     overall: 'toeflMinOverall',
     section: 'toeflMinSection',
-    overallMax: 120,
-    sectionMax: 30,
+    overallMax: 6,
+    sectionMax: 6,
   },
 };
 
