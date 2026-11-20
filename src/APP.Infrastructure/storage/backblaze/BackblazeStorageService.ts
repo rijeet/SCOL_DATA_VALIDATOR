@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, ServiceUnavailableException } from '@nestjs/common';
 import { ConfigService } from '@nestjs/config';
 import {
   S3Client,
@@ -17,7 +17,7 @@ const DOWNLOAD_URL_EXPIRES_IN = 3600; // 1 hour
 
 @Injectable()
 export class BackblazeStorageService implements IStorageService {
-  private readonly client: S3Client;
+  private readonly client: S3Client | null;
   private readonly bucket: string;
 
   constructor(private readonly config: ConfigService) {
@@ -29,16 +29,32 @@ export class BackblazeStorageService implements IStorageService {
       region?: string;
     }>('storage');
 
-    this.client = new S3Client({
-      endpoint: storage?.endpoint,
-      region: storage?.region ?? 'us-west-002',
-      credentials: {
-        accessKeyId: storage?.keyId ?? '',
-        secretAccessKey: storage?.applicationKey ?? '',
-      },
-      forcePathStyle: true,
-    });
-    this.bucket = storage?.bucketName ?? '';
+    this.bucket = storage?.bucketName?.trim() ?? '';
+    const keyId = storage?.keyId?.trim() ?? '';
+    const applicationKey = storage?.applicationKey?.trim() ?? '';
+    const endpoint = storage?.endpoint;
+    if (keyId && applicationKey && endpoint && this.bucket) {
+      this.client = new S3Client({
+        endpoint,
+        region: storage?.region ?? 'us-east-005',
+        credentials: {
+          accessKeyId: keyId,
+          secretAccessKey: applicationKey,
+        },
+        forcePathStyle: true,
+      });
+    } else {
+      this.client = null;
+    }
+  }
+
+  private requireClient(): S3Client {
+    if (!this.client || !this.bucket) {
+      throw new ServiceUnavailableException(
+        'Private storage is not configured. Set B2_KEY_ID, B2_APPLICATION_KEY, B2_BUCKET_NAME, and B2_ENDPOINT.',
+      );
+    }
+    return this.client;
   }
 
   async generateUploadUrl(
@@ -51,7 +67,7 @@ export class BackblazeStorageService implements IStorageService {
       Key: key,
       ContentType: mimeType,
     });
-    return getSignedUrl(this.client, command, {
+    return getSignedUrl(this.requireClient(), command, {
       expiresIn: expiresInSeconds,
     });
   }
@@ -61,14 +77,14 @@ export class BackblazeStorageService implements IStorageService {
       Bucket: this.bucket,
       Key: key,
     });
-    return getSignedUrl(this.client, command, {
+    return getSignedUrl(this.requireClient(), command, {
       expiresIn: DOWNLOAD_URL_EXPIRES_IN,
     });
   }
 
   async objectExists(key: string): Promise<boolean> {
     try {
-      await this.client.send(
+      await this.requireClient().send(
         new HeadObjectCommand({ Bucket: this.bucket, Key: key }),
       );
       return true;
@@ -82,14 +98,14 @@ export class BackblazeStorageService implements IStorageService {
   }
 
   async deleteObject(key: string): Promise<void> {
-    await this.client.send(
+    await this.requireClient().send(
       new DeleteObjectCommand({ Bucket: this.bucket, Key: key }),
     );
   }
 
   async listCommonPrefixes(prefix: string): Promise<string[]> {
     const normalized = prefix.endsWith('/') ? prefix : `${prefix}/`;
-    const res = await this.client.send(
+    const res = await this.requireClient().send(
       new ListObjectsV2Command({
         Bucket: this.bucket,
         Prefix: normalized,
@@ -103,7 +119,7 @@ export class BackblazeStorageService implements IStorageService {
 
   async listObjectKeys(prefix: string): Promise<string[]> {
     const normalized = prefix.endsWith('/') ? prefix : `${prefix}/`;
-    const res = await this.client.send(
+    const res = await this.requireClient().send(
       new ListObjectsV2Command({
         Bucket: this.bucket,
         Prefix: normalized,
@@ -116,7 +132,7 @@ export class BackblazeStorageService implements IStorageService {
   }
 
   async getObjectAsText(key: string): Promise<string> {
-    const res = await this.client.send(
+    const res = await this.requireClient().send(
       new GetObjectCommand({ Bucket: this.bucket, Key: key }),
     );
     const body = res.Body;

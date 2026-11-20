@@ -34,10 +34,10 @@ export function publicAssetFileUrl(
 
 /**
  * Presign and head objects in the public university-image bucket (scol-assets).
- * Separate from BackblazeStorageService (private scol-documents).
+ * Separate from BackblazeStorageService (private scol-data).
  *
  * Browser PUT needs the scolWebUpload CORS rule on this bucket (same origins
- * as scol-documents). Viewing the public file URL from an img tag does not.
+ * as scol-data). Viewing the public file URL from an img tag does not.
  */
 @Injectable()
 export class PublicAssetStorageService {

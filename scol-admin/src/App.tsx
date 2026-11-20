@@ -3,7 +3,6 @@ import { useEffect, useState } from 'react';
 import { Navigate, Route, Routes, useLocation } from 'react-router-dom';
 import { ensureAuth, getAccessToken } from './lib/api';
 import { LoginPage } from './pages/LoginPage';
-import { ReimportPage } from './pages/ReimportPage';
 import { WorkGate } from './pages/WorkGate';
 import { UniversitiesPage } from './pages/UniversitiesPage';
 import { DestinationsPage } from './pages/DestinationsPage';
@@ -100,14 +99,6 @@ export default function App() {
         element={
           <RequireAuth>
             <UniversitiesPage />
-          </RequireAuth>
-        }
-      />
-      <Route
-        path="/reimport"
-        element={
-          <RequireAuth>
-            <ReimportPage />
           </RequireAuth>
         }
       />

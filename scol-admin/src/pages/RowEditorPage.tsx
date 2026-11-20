@@ -6,7 +6,6 @@ import { FieldErrorTooltip } from '../components/FieldErrorTooltip';
 import { LoadingSplash } from '../components/LoadingSplash';
 import { AcademicReqPanel } from '../components/AcademicReqPanel';
 import { CourseUrlReferencePanel } from '../components/CourseUrlReferencePanel';
-import { UniversityHelpersPanel } from '../components/UniversityHelpersPanel';
 import { apiFetch } from '../lib/api';
 import {
   adjacentInvalidIndex,
@@ -176,7 +175,6 @@ export function RowEditorPage() {
   const [publishError, setPublishError] = useState<string | null>(null);
   const [publishNotice, setPublishNotice] = useState<PublishResult | null>(null);
   const [invalidRows, setInvalidRows] = useState<number[]>([]);
-  const [helpersOpen, setHelpersOpen] = useState(false);
   const [academicReqOpen, setAcademicReqOpen] = useState(false);
   const [showSplash, setShowSplash] = useState(true);
   const [jumpRowInput, setJumpRowInput] = useState('');
@@ -1133,16 +1131,6 @@ export function RowEditorPage() {
               Academic Req
             </button>
           )}
-          {batch?.universityKey && !batch.sysCountryId && (
-            <button
-              type="button"
-              onClick={() => setHelpersOpen(true)}
-              className="whitespace-nowrap rounded border border-slate-300 px-3 py-1.5 text-sm font-bold hover:bg-slate-50"
-            >
-              Helpers
-            </button>
-          )}
-
           {publishReadiness?.canPublish && (
             <button
               type="button"
@@ -1614,14 +1602,6 @@ export function RowEditorPage() {
           onClose={() => setAcademicReqOpen(false)}
         />
       )}
-      {batch?.universityKey && !batch.sysCountryId && (
-        <UniversityHelpersPanel
-          universityKey={batch.universityKey}
-          open={helpersOpen}
-          onClose={() => setHelpersOpen(false)}
-        />
-      )}
-
       <ConfirmDialog
         open={confirmPublish}
         title="Publish courses?"

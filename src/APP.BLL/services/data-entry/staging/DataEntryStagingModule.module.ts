@@ -1,9 +1,7 @@
 import { Module } from '@nestjs/common';
-import { CloudinaryModule } from '@infra/cloudinary/CloudinaryModule.module';
 import { StorageModule } from '@infra/storage/StorageModule.module';
 import { CourseRowValidator } from '../course/validators/CourseRowValidator';
 import { UniversityRowValidator } from '../university/UniversityRowValidator';
-import { DataEntryCloudCatalogService } from './DataEntryCloudCatalogService';
 import { DataEntryStagingService } from './DataEntryStagingService';
 import { DataEntryPublishService } from './DataEntryPublishService';
 import { DataEntryUploadService } from './DataEntryUploadService';
@@ -14,11 +12,10 @@ import { DataEntryApplyFilledService } from './DataEntryApplyFilledService';
 import { DataEntryUnpublishedCourseService } from './DataEntryUnpublishedCourseService';
 
 @Module({
-  imports: [CloudinaryModule, StorageModule],
+  imports: [StorageModule],
   providers: [
     CourseRowValidator,
     UniversityRowValidator,
-    DataEntryCloudCatalogService,
     DataEntryPublishService,
     DataEntryStorageKeyBuilder,
     DataEntryUploadService,
@@ -29,7 +26,6 @@ import { DataEntryUnpublishedCourseService } from './DataEntryUnpublishedCourseS
     DataEntryUnpublishedCourseService,
   ],
   exports: [
-    DataEntryCloudCatalogService,
     DataEntryStagingService,
     DataEntryPublishService,
     DataEntryUploadService,

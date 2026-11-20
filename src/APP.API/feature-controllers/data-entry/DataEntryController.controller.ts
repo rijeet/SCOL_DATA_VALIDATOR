@@ -25,7 +25,6 @@ import { RequireRole } from '@api/common/decorators/RequireRole.decorator';
 import { CurrentUser } from '@api/common/decorators/CurrentUser.decorator';
 import { Role } from '@shared/enums/Role.enum';
 import type { ICurrentUser } from '@shared/interfaces/domain';
-import { DataEntryCloudCatalogService } from '@bll/services/data-entry/staging/DataEntryCloudCatalogService';
 import { DataEntryStagingService } from '@bll/services/data-entry/staging/DataEntryStagingService';
 import { DataEntryPublishService } from '@bll/services/data-entry/staging/DataEntryPublishService';
 import { DataEntryUploadService } from '@bll/services/data-entry/staging/DataEntryUploadService';
@@ -43,7 +42,6 @@ import {
   RenameUnpublishedProgrammeRequestDto,
 } from '@shared/dtos/data-entry/RemapUnpublishedCourseRequestDto';
 import { GenerateApplyFilledUploadUrlRequestDto } from '@shared/dtos/data-entry/GenerateApplyFilledUploadUrlRequestDto';
-import { CreateDataEntryBatchRequestDto } from '@shared/dtos/data-entry/CreateDataEntryBatchRequestDto';
 import { UpdateDataEntryRowRequestDto } from '@shared/dtos/data-entry/UpdateDataEntryRowRequestDto';
 import { GenerateDataEntryUploadUrlRequestDto } from '@shared/dtos/data-entry/GenerateDataEntryUploadUrlRequestDto';
 import { ConfirmUniversityImageUploadRequestDto } from '@shared/dtos/data-entry/ConfirmUniversityImageUploadRequestDto';
@@ -70,7 +68,6 @@ import {
 @ApiBearerAuth('JWT-auth')
 export class DataEntryController {
   constructor(
-    private readonly catalog: DataEntryCloudCatalogService,
     private readonly staging: DataEntryStagingService,
     private readonly publish: DataEntryPublishService,
     private readonly upload: DataEntryUploadService,
@@ -501,19 +498,10 @@ export class DataEntryController {
     return this.staging.listSysUniversitiesForDataEntry();
   }
 
-  @Post('universities/sync-from-cloud')
-  @ApiOperation({
-    summary:
-      'Optional: add sys_Universities rows for each Cloudinary SCOL_DATA folder name',
-  })
-  syncUniversitiesFromCloud() {
-    return this.staging.syncSysUniversitiesFromCloud();
-  }
-
   @Post('batches/upload-url')
   @ApiOperation({
     summary:
-      'Create a batch and return signed Cloudinary raw-upload params (CSV + helpers)',
+      'Create a batch and return presigned PUT URLs for the CSV and helper markdown in scol-data',
   })
   generateUploadUrl(
     @Body() dto: GenerateDataEntryUploadUrlRequestDto,
@@ -524,7 +512,7 @@ export class DataEntryController {
 
   @Delete('batches/:batchId')
   @ApiOperation({
-    summary: 'Remove a failed or incomplete Cloudinary upload batch',
+    summary: 'Remove a failed or incomplete upload batch',
   })
   discardBatch(@Param('batchId', ParseUUIDPipe) batchId: string) {
     return this.upload.discardBatch(batchId);
@@ -557,49 +545,10 @@ export class DataEntryController {
   @Post('batches/:batchId/confirm-upload')
   @ApiOperation({
     summary:
-      'Read CSV + helpers from Cloudinary and stage rows after browser upload',
+      'Read the CSV and helper markdown from scol-data and stage rows after the browser upload',
   })
   confirmUpload(@Param('batchId') batchId: string) {
     return this.upload.confirmUpload(batchId);
-  }
-
-  @Post('batches')
-  @ApiOperation({
-    summary: 'Import CSV from cloud into staging rows (validated)',
-  })
-  async createBatch(
-    @Body() dto: CreateDataEntryBatchRequestDto,
-    @CurrentUser() user: ICurrentUser,
-    @Query('replaceExisting') replaceExisting?: string,
-  ) {
-    const fromCloud = dto.fromCloud !== false;
-    const replace = replaceExisting === 'true' || replaceExisting === '1';
-    let batch;
-    if (dto.sysUniversityId) {
-      if (!fromCloud) {
-        throw new BadRequestException(
-          'Only Cloudinary import is supported for new batches (fromCloud=true).',
-        );
-      }
-      batch = await this.staging.importFromCloudForSysUniversity(
-        dto.sysUniversityId,
-        user.userId,
-        { replaceExisting: replace },
-      );
-    } else if (dto.universityKey) {
-      batch = await this.staging.importFromCloud(
-        dto.universityKey,
-        user.userId,
-      );
-    } else {
-      throw new BadRequestException('sysUniversityId is required');
-    }
-    return {
-      message: 'Batch imported.',
-      batchId: batch.id,
-      rowCount: batch.rowCount,
-      invalidRowCount: batch.invalidRowCount,
-    };
   }
 
   @Get('batches/:batchId/export.csv')
@@ -623,7 +572,7 @@ export class DataEntryController {
   @Post('batches/:batchId/apply-filled-upload-url')
   @ApiOperation({
     summary:
-      'Signed Cloudinary upload for a DATA FIX 4_col_filled CSV (does not replace the batch)',
+      'Presigned PUT for a DATA FIX 4_col_filled CSV in scol-data (does not replace the batch)',
   })
   generateApplyFilledUploadUrl(
     @Param('batchId', ParseUUIDPipe) batchId: string,
@@ -675,7 +624,7 @@ export class DataEntryController {
 
   @Get('batches/:batchId/guide/:helperKey')
   @ApiOperation({
-    summary: 'Helper markdown from batch snapshot or Cloudinary public_id',
+    summary: 'Helper markdown from the batch snapshot or scol-data object',
   })
   getBatchGuide(
     @Param('batchId') batchId: string,
@@ -721,16 +670,4 @@ export class DataEntryController {
     return this.staging.updateRow(batchId, rowIndex, dto.fields);
   }
 
-  @Get('universities/:universityKey/helpers/:helperKey')
-  @ApiOperation({ summary: 'Read helper markdown from cloud for a university' })
-  async getHelper(
-    @Param('universityKey') universityKey: string,
-    @Param('helperKey') helperKey: DataEntryHelperKey,
-  ) {
-    const markdown = await this.catalog.readHelperMarkdown(
-      universityKey,
-      helperKey,
-    );
-    return { helperKey, markdown };
-  }
 }

@@ -1,12 +1,14 @@
 import {
   BadRequestException,
   ConflictException,
+  Inject,
   Injectable,
   NotFoundException,
 } from '@nestjs/common';
 import type { EntityManager } from 'typeorm';
 import { AppDbContext } from '@infra/db/typeorm/AppDbContext';
-import { CloudinaryUniversityDataService } from '@infra/cloudinary/CloudinaryUniversityData.service';
+import type { IStorageService as StorageClient } from '@shared/interfaces/IStorageService.interface';
+import { IStorageService } from '@shared/tokens/injection.tokens';
 import { DataEntryBatches } from '@entity/entities/DataEntryBatches.entity';
 import { DataEntryCourseRows } from '@entity/entities/DataEntryCourseRows.entity';
 import { SysUniversities } from '@entity/entities/SysUniversities.entity';
@@ -32,6 +34,7 @@ import { CourseRowValidator } from '../course/validators/CourseRowValidator';
 import { normalizeCourseCsvRow } from '../course/dto/CourseImportRowTypes';
 import { normalizeStagingCourseRow } from './courseStagingHeaders';
 import { DataEntryStorageKeyBuilder } from './DataEntryStorageKeyBuilder';
+import type { PrivateObjectUpload } from './DataEntryUploadService';
 import { DataEntryCatalogLookup } from './DataEntryCatalogLookup';
 import { DataEntryDashboardService } from './DataEntryDashboardService';
 import { DataEntryStagingService } from './DataEntryStagingService';
@@ -42,7 +45,7 @@ import type { CsvRow } from '../common/abstractions/CsvImportProcessor';
 export class DataEntryApplyFilledService {
   constructor(
     private readonly db: AppDbContext,
-    private readonly cloudinary: CloudinaryUniversityDataService,
+    @Inject(IStorageService) private readonly storage: StorageClient,
     private readonly keys: DataEntryStorageKeyBuilder,
     private readonly courseValidator: CourseRowValidator,
     private readonly dashboard: DataEntryDashboardService,
@@ -68,10 +71,17 @@ export class DataEntryApplyFilledService {
     if (!batch.csvObjectKey) {
       throw new ConflictException('Batch has no CSV location for filled upload');
     }
-    const publicId = this.keys.filledCsvPublicId(batch.csvObjectKey);
-    return {
-      csv: this.cloudinary.generateSignedRawUpload(publicId),
+    const storageKey = this.keys.filledCsvPublicId(batch.csvObjectKey);
+    const uploadUrl = await this.storage.generateUploadUrl(
+      storageKey,
+      'text/csv',
+    );
+    const csv: PrivateObjectUpload = {
+      uploadUrl,
+      storageKey,
+      headers: { 'Content-Type': 'text/csv' },
     };
+    return { csv };
   }
 
   async confirmAndApply(batchId: string): Promise<ApplyFilledCsvResultDto> {
@@ -79,14 +89,11 @@ export class DataEntryApplyFilledService {
     if (!batch.csvObjectKey) {
       throw new ConflictException('Batch has no CSV location');
     }
-    const publicId = this.keys.filledCsvPublicId(batch.csvObjectKey);
-    const resolved = await this.cloudinary.resolveRawPublicId(publicId);
-    if (!resolved) {
-      throw new BadRequestException(
-        'Filled CSV not found in Cloudinary. Upload it first.',
-      );
+    const storageKey = this.keys.filledCsvPublicId(batch.csvObjectKey);
+    if (!(await this.storage.objectExists(storageKey))) {
+      throw new BadRequestException('Filled CSV not found. Upload it first.');
     }
-    const csvText = await this.cloudinary.fetchRawText(resolved);
+    const csvText = await this.storage.getObjectAsText(storageKey);
     return this.applyCsvText(batch, csvText);
   }
 
